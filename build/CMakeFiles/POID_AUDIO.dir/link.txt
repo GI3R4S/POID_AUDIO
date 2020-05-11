@@ -1,1 +1,0 @@
-/usr/bin/c++  -g   CMakeFiles/POID_AUDIO.dir/main.cpp.o CMakeFiles/POID_AUDIO.dir/src/Utility.cpp.o  -o ../bin/POID_AUDIO -lpthread -lX11 

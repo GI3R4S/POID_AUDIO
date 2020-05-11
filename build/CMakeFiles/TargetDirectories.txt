@@ -1,3 +1,0 @@
-/home/dejf/projekty/POID_AUDIO/build/CMakeFiles/rebuild_cache.dir
-/home/dejf/projekty/POID_AUDIO/build/CMakeFiles/POID_AUDIO.dir
-/home/dejf/projekty/POID_AUDIO/build/CMakeFiles/edit_cache.dir
