@@ -16,6 +16,9 @@ int main()
 
   POID_DGMK::Utility::LoadSoundUntilSuccessful(inputFileName, baseAudioFile);
 
+  modifiedAudioFile = baseAudioFile;
+  workAudioFile = baseAudioFile;
+
   while (true)
   {
     std::system("clear");

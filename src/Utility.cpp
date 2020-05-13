@@ -1,9 +1,21 @@
 #include "Utility.h"
+#include "matplotlibcpp.h"
 #include <algorithm>
 #include <fstream>
 #include <map>
 #include <numeric>
 #include <stdio.h>
+
+namespace {
+namespace plt = matplotlibcpp;
+
+void ShowPlot(const std::vector<double> &aData, const std::string &aName) {
+  plt::plot(aData);
+  plt::title(aName);
+  plt::show();
+}
+
+} // namespace
 
 namespace POID_DGMK {
 
@@ -90,7 +102,8 @@ namespace POID_DGMK {
 //                   aHistogramData.mGreenChannelProbabilities,
 //                   "greenChannel.dat");
 //   DumpChannelData(aHistogramData.mColorValues,
-//                   aHistogramData.mBlueChannelProbabilities, "blueChannel.dat");
+//                   aHistogramData.mBlueChannelProbabilities,
+//                   "blueChannel.dat");
 //   DumpChannelData(aHistogramData.mColorValues,
 //                   aHistogramData.nAverageProbabilities, "averageRGB.dat");
 
@@ -103,7 +116,8 @@ namespace POID_DGMK {
 //   float blueChannelMax =
 //       *std::max_element(aHistogramData.mBlueChannelProbabilities.begin(),
 //                         aHistogramData.mBlueChannelProbabilities.end());
-//   float avgMax = *std::max_element(aHistogramData.nAverageProbabilities.begin(),
+//   float avgMax =
+//   *std::max_element(aHistogramData.nAverageProbabilities.begin(),
 //                                    aHistogramData.nAverageProbabilities.end());
 //   float yMax =
 //       std::max({redChannelMax, greenChannelMax, blueChannelMax, avgMax});
@@ -168,6 +182,7 @@ void Utility::ViewMenu() {
             << "[L] Load another file\n"
             << "[R] Reset work sound\n"
             << "[S] Save modified sound\n"
+            << "[V] Display sample info\n"
             << "[Q] Exit program\n"
             << "==============================================\n";
 }
@@ -175,7 +190,8 @@ void Utility::ViewMenu() {
 // void Utility::ViewHistogram() {
 //   char input;
 //   do {
-//     std::cout << "View histogram for picture '1' - base, '2' - modified, '3' "
+//     std::cout << "View histogram for picture '1' - base, '2' - modified, '3'
+//     "
 //                  "- work\n";
 //     std::cin >> input;
 //   } while (input != '1' && input != '2' && input != '3');
@@ -183,13 +199,48 @@ void Utility::ViewMenu() {
 //   Image chosenImage;
 // }
 
-void Utility::HandleUserChoice(std::string &aInputFile, AudioFile<double> &aBaseSound,
-                               AudioFile<double> &aModifiedSound, AudioFile<double> &aWorkSound) {
+void Utility::HandleUserChoice(std::string &aInputFile,
+                               AudioFile<double> &aBaseSound,
+                               AudioFile<double> &aModifiedSound,
+                               AudioFile<double> &aWorkSound) {
   char userChoice;
   std::cout << "\n Select action: \n";
   std::cin >> userChoice;
   switch (userChoice) {
   case '1': {
+    auto &audioSource = SelectSource(aBaseSound, aModifiedSound, aWorkSound);
+
+    std::vector<double> transformedSignal;
+
+    for (int m = 1; m < aWorkSound.getNumSamplesPerChannel(); ++m) {
+      double sum = 0;
+      for (int i = 0; i < aWorkSound.getNumSamplesPerChannel(); ++i) {
+        double value = audioSource.samples[0][i];
+
+        value *= m + i < aWorkSound.getNumSamplesPerChannel()
+                     ? audioSource.samples[0][m + i]
+                     : 0;
+        sum += value;
+      }
+      transformedSignal.push_back(sum);
+    }
+
+    auto maxElement =
+        std::max_element(transformedSignal.begin(), transformedSignal.end());
+    auto maxIndex = maxElement - transformedSignal.begin();
+    auto maxVal = *maxElement;
+
+    std::cout << "Index for maximum in autocorelation for m_min = 1: "
+              << maxIndex << std::endl;
+    std::cout << "Maximum value in autocorelation for m_min = 1: " << maxVal
+              << std::endl;
+
+    std::cin.ignore();
+    std::cin.get();
+
+    ShowPlot(transformedSignal, "Basic signal");
+    ShowPlot(audioSource.samples[0], "Autocorelation");
+
     break;
   }
   case 'q':
@@ -197,13 +248,12 @@ void Utility::HandleUserChoice(std::string &aInputFile, AudioFile<double> &aBase
     exit(0);
     break;
   }
-
   case 's':
   case 'S': {
     std::string fileName;
     std::string fileNameTmp;
     fileName.append(RESOURCES_DIR);
-    
+
     std::cout << "Insert file name: " << std::endl;
     std::cin >> fileNameTmp;
     fileName.append("/");
@@ -215,6 +265,15 @@ void Utility::HandleUserChoice(std::string &aInputFile, AudioFile<double> &aBase
   case 'u':
   case 'U': {
     aModifiedSound = aWorkSound;
+    break;
+  }
+  case 'v':
+  case 'V': {
+    auto &audioSource = SelectSource(aBaseSound, aModifiedSound, aWorkSound);
+    audioSource.printSummary();
+
+    std::cin.ignore();
+    std::cin.get();
     break;
   }
   case 'r':
