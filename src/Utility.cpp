@@ -2,138 +2,99 @@
 #include "matplotlibcpp.h"
 #include <algorithm>
 #include <fstream>
-#include <map>
 #include <numeric>
 #include <stdio.h>
 
-namespace {
-namespace plt = matplotlibcpp;
-
-void ShowPlot(const std::vector<double> &aData, const std::string &aName) {
-  plt::plot(aData);
-  plt::title(aName);
-  plt::show();
-}
-
-} // namespace
+#include <algorithm>
+#include <assert.h>
 
 namespace POID_DGMK {
+namespace plt = matplotlibcpp;
 
-// HistogramData Utility::GenerateHistogramData(const Image &aImage) {
-//   HistogramData histogramData;
-//   const auto &imgData = aImage.GetImageData();
+void Utility::FFT(CArray &x) {
+  const size_t N = x.size();
+  if (N <= 1)
+    return;
 
-//   std::map<uint8_t, std::size_t> redChannelNumbers;
-//   std::map<uint8_t, std::size_t> greenChannelNumbers;
-//   std::map<uint8_t, std::size_t> blueChannelNumbers;
-//   std::map<uint8_t, std::size_t> averageChannelNumbers;
+  CArray even = x[std::slice(0, N / 2, 2)];
+  CArray odd = x[std::slice(1, N / 2, 2)];
 
-//   for (uint16_t i = 0; i <= 255; i++) {
-//     redChannelNumbers.insert({i, 0});
-//     greenChannelNumbers.insert({i, 0});
-//     blueChannelNumbers.insert({i, 0});
-//     averageChannelNumbers.insert({i, 0});
-//   }
+  FFT(even);
+  FFT(odd);
 
-//   for (int i = 0; i < imgData.width(); ++i) {
-//     for (int j = 0; j < imgData.height(); ++j) {
-//       uint8_t redChannelValue = imgData(i, j, 0);
-//       uint8_t greenChannelValue = imgData(i, j, 1);
-//       uint8_t blueChannelValue = imgData(i, j, 2);
-//       uint8_t averageValue = static_cast<uint8_t>(
-//           std::round((0.299 * redChannelValue + 0.587 * greenChannelValue +
-//                       0.114 * blueChannelValue)));
+  for (size_t k = 0; k < N / 2; ++k) {
+    TComplex t = std::polar(1.0, -2 * M_PI * k / N) * odd[k];
+    x[k] = even[k] + t;
+    x[k + N / 2] = even[k] - t;
+  }
+}
 
-//       const auto &itRed = redChannelNumbers.find(redChannelValue);
-//       const auto &itGreen = greenChannelNumbers.find(greenChannelValue);
-//       const auto &itBlue = blueChannelNumbers.find(blueChannelValue);
-//       const auto &itAvg = averageChannelNumbers.find(averageValue);
+void Utility::IFFT(CArray &x) {
+  x = x.apply(std::conj);
+  FFT(x);
+  x = x.apply(std::conj);
+  x /= x.size();
+}
 
-//       ++(redChannelNumbers[redChannelValue]);
-//       ++(greenChannelNumbers[greenChannelValue]);
-//       ++(blueChannelNumbers[blueChannelValue]);
-//       ++(averageChannelNumbers[averageValue]);
-//     }
+std::vector<double>
+Utility::GetBaseFreqPlotData(const AudioFile<double> &aAudioSource,
+                             const std::vector<double> &aPitches,
+                             int aWindowSize) {
 
-//     const auto numberOfPixels = imgData.width() * imgData.height();
-//     for (uint16_t i = 0; i <= 255; ++i) {
-//       histogramData.mColorValues.push_back(i);
+  constexpr double kEpsilon = 5;
 
-//       histogramData.mRedChannelOccurrences.push_back(redChannelNumbers[i]);
-//       histogramData.mGreenChannelOccurrences.push_back(greenChannelNumbers[i]);
-//       histogramData.mBlueChannelOccurrences.push_back(blueChannelNumbers[i]);
-//       histogramData.nAverageOccurrences.push_back(averageChannelNumbers[i]);
+  const double kMin = *std::min(aPitches.begin(), aPitches.end());
+  const double kMax = *std::max(aPitches.begin(), aPitches.end());
+  const double kAvg =
+      std::accumulate(aPitches.begin(), aPitches.end(), 0) / aPitches.size();
 
-//       histogramData.mRedChannelProbabilities.push_back(
-//           1.0f * redChannelNumbers[i] / numberOfPixels);
-//       histogramData.mGreenChannelProbabilities.push_back(
-//           1.0f * greenChannelNumbers[i] / numberOfPixels);
-//       histogramData.mBlueChannelProbabilities.push_back(
-//           1.0f * blueChannelNumbers[i] / numberOfPixels);
-//       histogramData.nAverageProbabilities.push_back(
-//           1.0f * averageChannelNumbers[i] / numberOfPixels);
-//     }
-//   }
+  std::vector<std::vector<double>> pitchesGroups;
+  std::vector<double> pitchesGroup;
 
-//   return histogramData;
-// }
+  for (int i = 0; i < aPitches.size(); ++i) {
+    if (pitchesGroup.empty()) {
+      pitchesGroup.push_back(aPitches[i]);
+    } else {
+      auto tmpVec = pitchesGroup;
+      tmpVec.push_back(aPitches[i]);
+      auto min = *std::min_element(tmpVec.begin(), tmpVec.end());
+      auto max = *std::max_element(tmpVec.begin(), tmpVec.end());
+      if (max - min <= kEpsilon) {
+        pitchesGroup.push_back(aPitches[i]);
+      } else {
+        pitchesGroups.push_back(pitchesGroup);
+        pitchesGroup.clear();
+        pitchesGroup.push_back(aPitches[i]);
+      }
+    }
+  }
+  if (!pitchesGroup.empty()) {
+    pitchesGroups.push_back(pitchesGroup);
+  }
 
-// void Utility::DumpChannelData(const std::vector<uint8_t> &aXValues,
-//                               const std::vector<float> &aYValues,
-//                               const std::string &aFileName) {
-//   std::ofstream outputFile;
-//   std::string outputFilePath;
-//   outputFilePath.append(RESOURCES_DIR);
-//   outputFilePath.append(aFileName);
-//   outputFile.open(outputFilePath, std::ios::out | std::ios::trunc);
-//   assert((aXValues.size() == aYValues.size()) && aFileName.c_str());
-//   for (size_t i = 0; i < aXValues.size(); ++i) {
-//     outputFile << std::to_string(aXValues[i]) << '\t'
-//                << std::to_string(aYValues[i]) << '\n';
-//   }
+  std::vector<double> pitchData;
 
-//   outputFile.close();
-// }
+  auto lastGroupSize = aAudioSource.samples[0].size() % aWindowSize;
 
-// void Utility::GenerateFiles(const HistogramData &aHistogramData) {
-//   DumpChannelData(aHistogramData.mColorValues,
-//                   aHistogramData.mRedChannelProbabilities, "redChannel.dat");
-//   DumpChannelData(aHistogramData.mColorValues,
-//                   aHistogramData.mGreenChannelProbabilities,
-//                   "greenChannel.dat");
-//   DumpChannelData(aHistogramData.mColorValues,
-//                   aHistogramData.mBlueChannelProbabilities,
-//                   "blueChannel.dat");
-//   DumpChannelData(aHistogramData.mColorValues,
-//                   aHistogramData.nAverageProbabilities, "averageRGB.dat");
+  for (int i = 0; i < pitchesGroups.size(); ++i) {
+    const auto avg =
+        std::accumulate(pitchesGroups[i].begin(), pitchesGroups[i].end(), 0) /
+        pitchesGroups[i].size();
+    auto groupSize = 0;
 
-//   float redChannelMax =
-//       *std::max_element(aHistogramData.mRedChannelProbabilities.begin(),
-//                         aHistogramData.mRedChannelProbabilities.end());
-//   float greenChannelMax =
-//       *std::max_element(aHistogramData.mGreenChannelProbabilities.begin(),
-//                         aHistogramData.mGreenChannelProbabilities.end());
-//   float blueChannelMax =
-//       *std::max_element(aHistogramData.mBlueChannelProbabilities.begin(),
-//                         aHistogramData.mBlueChannelProbabilities.end());
-//   float avgMax =
-//   *std::max_element(aHistogramData.nAverageProbabilities.begin(),
-//                                    aHistogramData.nAverageProbabilities.end());
-//   float yMax =
-//       std::max({redChannelMax, greenChannelMax, blueChannelMax, avgMax});
-//   yMax *= 1.1f;
+    if (i == pitchesGroups.size() - 1) {
+      groupSize = (pitchesGroups[i].size() - 1) * aWindowSize + lastGroupSize;
+    } else {
+      groupSize = pitchesGroups[i].size() * aWindowSize;
+    }
 
-//   std::string filePath;
-//   filePath.append(RESOURCES_DIR);
-//   filePath.append("drawHistogramRGB.sh");
-//   filePath.append(" ");
-//   filePath.append(RESOURCES_DIR);
-//   filePath.append(" -e \"yMax='");
-//   filePath.append(std::to_string(yMax));
-//   filePath.append("'\"");
+    for (int j = 0; j < groupSize; ++j) {
+      pitchData.push_back(avg);
+    }
+  }
 
-//   system(filePath.c_str());
-// }
+  return pitchData;
+}
 
 bool Utility::LoadSound(std::string &aFileName,
                         AudioFile<double> &aSoundToUpdate) {
@@ -154,136 +115,39 @@ void Utility::LoadSoundUntilSuccessful(std::string &aFileName,
   }
 }
 
-AudioFile<double> &Utility::SelectSource(AudioFile<double> &aBaseSound,
-                                         AudioFile<double> &aModifiedSound,
-                                         AudioFile<double> &aWorkSound) {
-  char choice;
-  do {
-    std::cout
-        << "Select source picture: '1' - base, '2' - modified, '3' - work\n";
-    std::cin >> choice;
-  } while (choice != '1' && choice != '2' && choice != '3');
-
-  if (choice == '1') {
-    return aBaseSound;
-  }
-  if (choice == '2') {
-    return aModifiedSound;
-  }
-  if (choice == '3') {
-    return aWorkSound;
-  }
-  return aBaseSound;
+void Utility::ShowPlot(const std::vector<double> &aData,
+                       const std::string &aName) {
+  plt::plot(aData);
+  plt::title(aName);
+  plt::show();
 }
 
-void Utility::ViewMenu() {
-  std::cout << "==============================================\n"
-            << "[1] Deduce pitch using autocorelation\n"
-            << "[L] Load another file\n"
-            << "[R] Reset work sound\n"
-            << "[S] Save modified sound\n"
-            << "[V] Display sample info\n"
-            << "[Q] Exit program\n"
-            << "==============================================\n";
-}
+std::vector<std::vector<double>>
+Utility::GetSegmentedSamples(const std::vector<double> &aSamples,
+                             int aWindowSize) {
+  std::vector<std::vector<double>> batches;
 
-// void Utility::ViewHistogram() {
-//   char input;
-//   do {
-//     std::cout << "View histogram for picture '1' - base, '2' - modified, '3'
-//     "
-//                  "- work\n";
-//     std::cin >> input;
-//   } while (input != '1' && input != '2' && input != '3');
+  int numberOfFullBatches = aSamples.size() / aWindowSize;
+  int numberpOfSamplesInLastBatch = aSamples.size() % aWindowSize;
 
-//   Image chosenImage;
-// }
-
-void Utility::HandleUserChoice(std::string &aInputFile,
-                               AudioFile<double> &aBaseSound,
-                               AudioFile<double> &aModifiedSound,
-                               AudioFile<double> &aWorkSound) {
-  char userChoice;
-  std::cout << "\n Select action: \n";
-  std::cin >> userChoice;
-  switch (userChoice) {
-  case '1': {
-    auto &audioSource = SelectSource(aBaseSound, aModifiedSound, aWorkSound);
-
-    std::vector<double> transformedSignal;
-
-    for (int m = 1; m < aWorkSound.getNumSamplesPerChannel(); ++m) {
-      double sum = 0;
-      for (int i = 0; i < aWorkSound.getNumSamplesPerChannel(); ++i) {
-        double value = audioSource.samples[0][i];
-
-        value *= m + i < aWorkSound.getNumSamplesPerChannel()
-                     ? audioSource.samples[0][m + i]
-                     : 0;
-        sum += value;
-      }
-      transformedSignal.push_back(sum);
+  for (int i = 1; i <= numberOfFullBatches; ++i) {
+    std::vector<double> batch;
+    for (int j = (i - 1) * aWindowSize; j < i * aWindowSize; ++j) {
+      batch.push_back(aSamples[j]);
     }
 
-    auto maxElement =
-        std::max_element(transformedSignal.begin(), transformedSignal.end());
-    auto maxIndex = maxElement - transformedSignal.begin();
-    auto maxVal = *maxElement;
+    batches.push_back(batch);
+  }
 
-    std::cout << "Index for maximum in autocorelation for m_min = 1: "
-              << maxIndex << std::endl;
-    std::cout << "Maximum value in autocorelation for m_min = 1: " << maxVal
-              << std::endl;
+  std::vector<double> lastBatch;
+  for (int i = numberOfFullBatches * aWindowSize;
+       i < numberOfFullBatches * aWindowSize + numberpOfSamplesInLastBatch;
+       ++i) {
+    lastBatch.push_back(aSamples[i]);
+  }
+  batches.push_back(lastBatch);
 
-    std::cin.ignore();
-    std::cin.get();
-
-    ShowPlot(transformedSignal, "Basic signal");
-    ShowPlot(audioSource.samples[0], "Autocorelation");
-
-    break;
-  }
-  case 'q':
-  case 'Q': {
-    exit(0);
-    break;
-  }
-  case 's':
-  case 'S': {
-    std::string fileName;
-    std::string fileNameTmp;
-    fileName.append(RESOURCES_DIR);
-
-    std::cout << "Insert file name: " << std::endl;
-    std::cin >> fileNameTmp;
-    fileName.append("/");
-    fileName.append(fileNameTmp);
-
-    aModifiedSound.save(fileName);
-    break;
-  }
-  case 'u':
-  case 'U': {
-    aModifiedSound = aWorkSound;
-    break;
-  }
-  case 'v':
-  case 'V': {
-    auto &audioSource = SelectSource(aBaseSound, aModifiedSound, aWorkSound);
-    audioSource.printSummary();
-
-    std::cin.ignore();
-    std::cin.get();
-    break;
-  }
-  case 'r':
-  case 'R': {
-    aWorkSound = aBaseSound;
-    break;
-  }
-  default: {
-    std::cout << "Unhandled option chosen\n";
-  }
-  }
+  return batches;
 }
+
 } // namespace POID_DGMK

@@ -2,20 +2,20 @@
 #define UTILITY_H
 
 #include "AudioFile.h"
+#include <complex>
 #include <string>
+#include <valarray>
 #include <vector>
 
 namespace POID_DGMK {
 
 class Utility {
 public:
-  // static HistogramData GenerateHistogramData(const Image &aImage);
+  static void ShowPlot(const std::vector<double> &aData,
+                       const std::string &aName);
 
-  // static void DumpChannelData(const std::vector<uint8_t> &aXValues,
-  //                             const std::vector<float> &aYValues,
-  //                             const std::string &aFileName);
-
-  // static void GenerateFiles(const HistogramData &aHistogramData);
+  static std::vector<std::vector<double>>
+  GetSegmentedSamples(const std::vector<double> &aSamples, int aWindowSize);
 
   static bool LoadSound(std::string &aFileName,
                         AudioFile<double> &aSoundToUpdate);
@@ -23,18 +23,16 @@ public:
   static void LoadSoundUntilSuccessful(std::string &aFileName,
                                        AudioFile<double> &aSoundToUpdate);
 
-  static AudioFile<double> &SelectSource(AudioFile<double> &aBaseSound,
-                                         AudioFile<double> &aModifiedSound,
-                                         AudioFile<double> &aWorkSound);
+  static std::vector<double>
+  GetBaseFreqPlotData(const AudioFile<double> &aAudioSource,
+                      const std::vector<double> &aPitches, int aWindowSize);
 
-  // static void ViewHistogram();
+  using TComplex = std::complex<double>;
+  using CArray = std::valarray<TComplex>;
+  using TComplexRepresentation = std::vector<CArray>;
 
-  static void ViewMenu();
-
-  static void HandleUserChoice(std::string &aInputFile,
-                               AudioFile<double> &aBaseSound,
-                               AudioFile<double> &aModifiedSound,
-                               AudioFile<double> &aWorkSound);
+  static void FFT(CArray &x);
+  static void IFFT(CArray &x);
 };
 
 } // namespace POID_DGMK

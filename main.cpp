@@ -1,4 +1,5 @@
-﻿#include "Utility.h"
+﻿#include "UserChoiceHandler.h"
+#include "Utility.h"
 #include <complex>
 #include <iostream>
 #include <stdio.h>
@@ -6,25 +7,18 @@
 #include <valarray>
 #include <vector>
 
-int main()
-{
+int main() {
   std::string inputFileName;
 
   AudioFile<double> baseAudioFile;
-  AudioFile<double> modifiedAudioFile;
-  AudioFile<double> workAudioFile;
 
   POID_DGMK::Utility::LoadSoundUntilSuccessful(inputFileName, baseAudioFile);
 
-  modifiedAudioFile = baseAudioFile;
-  workAudioFile = baseAudioFile;
-
-  while (true)
-  {
+  while (true) {
     std::system("clear");
 
-    POID_DGMK::Utility::ViewMenu();
-    POID_DGMK::Utility::HandleUserChoice(inputFileName, baseAudioFile,
-                                                   modifiedAudioFile, workAudioFile);
+    POID_DGMK::UserChoiceHandler::ViewMenu();
+    POID_DGMK::UserChoiceHandler::HandleUserChoice(
+        inputFileName, baseAudioFile);
   }
 }

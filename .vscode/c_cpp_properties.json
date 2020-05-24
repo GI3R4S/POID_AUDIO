@@ -1,0 +1,22 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/usr/include/opencv2"
+            ],
+            "defines": [],
+            "cStandard": "c11",
+            "compilerPath": "/usr/local/bin/clang++",
+            "intelliSenseMode": "clang-x64",
+            "compilerArgs": [
+                "-std=c++17",
+                "-Wall",
+                "-Wextra"
+            ],
+            "cppStandard": "c++17"
+        }
+    ],
+    "version": 4
+}

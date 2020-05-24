@@ -26,3 +26,4 @@ target_compile_definitions(
   POID_AUDIO PUBLIC RESOURCES_DIR="${PROJECT_SOURCE_DIR}/resources/")
 
 target_link_libraries(POID_AUDIO ${PYTHON_LIBRARY} pthread X11)
+
