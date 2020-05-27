@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <assert.h>
+#include <tuple>
 
 namespace POID_DGMK {
 namespace plt = matplotlibcpp;
@@ -122,18 +123,51 @@ void Utility::ShowPlot(const std::vector<double> &aData,
   plt::show();
 }
 
-std::vector<std::vector<double>>
-Utility::GetSegmentedSamples(const std::vector<double> &aSamples,
-                             int aWindowSize) {
+PlotData Utility::GetSegmentedSamples(const std::vector<double> &aSamples,
+                                      int aWindowSize) {
+
+  std::vector<double> samplesCopy(aSamples.begin(), aSamples.end());
+
+  double average = 0;
+  for (int i = 0; i < samplesCopy.size(); ++i) {
+    average += std::abs(samplesCopy[i]);
+  }
+
+  average /= samplesCopy.size();
+  average *= 1.5;
+  // samplesCopy.size() % 2 == 1
+  //                  ? samplesCopy[samplesCopy.size() / 2]
+  //                  : (samplesCopy[samplesCopy.size() / 2 - 1] +
+  //                     samplesCopy[samplesCopy.size() / 2]) /
+  //                        2;
+
+  std::cout << "average: " << average << std::endl;
+  std::vector<int> mask;
   std::vector<std::vector<double>> batches;
 
   int numberOfFullBatches = aSamples.size() / aWindowSize;
   int numberpOfSamplesInLastBatch = aSamples.size() % aWindowSize;
 
+  bool wasPreviousPowerNotSufficent = false;
+
   for (int i = 1; i <= numberOfFullBatches; ++i) {
     std::vector<double> batch;
     for (int j = (i - 1) * aWindowSize; j < i * aWindowSize; ++j) {
       batch.push_back(aSamples[j]);
+    }
+
+    bool isMinimalValueNotExceeded =
+        *std::max_element(batch.begin(), batch.end())<
+            average && * std::min_element(batch.begin(), batch.end())> -
+        1 * average;
+
+    int valToInsert =
+        isMinimalValueNotExceeded || wasPreviousPowerNotSufficent ? 0 : 1;
+
+    wasPreviousPowerNotSufficent = isMinimalValueNotExceeded;
+
+    for (int j = 0; j < batch.size(); ++j) {
+      mask.push_back(valToInsert);
     }
 
     batches.push_back(batch);
@@ -145,9 +179,80 @@ Utility::GetSegmentedSamples(const std::vector<double> &aSamples,
        ++i) {
     lastBatch.push_back(aSamples[i]);
   }
+
+  bool isMinimalValueNotExceeded =
+      *std::max_element(lastBatch.begin(), lastBatch.end())<
+          average && * std::min_element(lastBatch.begin(), lastBatch.end())> -
+      1 * average;
+
+  int valToInsert = isMinimalValueNotExceeded ? 0 : 1;
+
+  for (int j = 0; j < lastBatch.size(); ++j) {
+    mask.push_back(valToInsert);
+  }
+
   batches.push_back(lastBatch);
 
-  return batches;
+  PlotData toReturn;
+  toReturn.segmentedPlotData = batches;
+  toReturn.mask = mask;
+
+  return toReturn;
+}
+
+std::vector<double>
+Utility::GeneratePitchSignal(const AudioFile<double> &aSource,
+                             const std::vector<double> &aPitchData) {
+  assert(aPitchData.size() > 1);
+  std::vector<double> pitchSignal;
+
+  double prevPitchValue = std::numeric_limits<double>::lowest();
+  int numberOfSamplesPerPeriod = 0;
+  for (int i = 0; i < aPitchData.size(); ++i) {
+    if (prevPitchValue != aPitchData[i]) {
+      prevPitchValue = aPitchData[i];
+      numberOfSamplesPerPeriod = aSource.getSampleRate() / aPitchData[i];
+    }
+
+    if (aPitchData[i] != 0) {
+      int modulo = i % numberOfSamplesPerPeriod;
+      double factor = 1.0 * modulo / numberOfSamplesPerPeriod;
+      double arg = (2 * M_PI) * factor;
+      double sinVal = sin(arg);
+      pitchSignal.push_back(sinVal);
+    } else {
+      pitchSignal.push_back(0);
+    }
+  }
+
+  return pitchSignal;
+}
+
+int Utility::FindIndexOfMaximum(const std::vector<double> aData) {
+  std::vector<double> reducedVector;
+  bool isIncreaseReached = false;
+  int i = 0;
+  for (; i < aData.size(); ++i) {
+    if (aData[i + 1] > aData[i]) {
+      isIncreaseReached = true;
+    }
+
+    if (isIncreaseReached) {
+      reducedVector.push_back(aData[i]);
+    }
+  }
+
+  if (!reducedVector.empty()) {
+    auto maxElement =
+        std::max_element(reducedVector.begin(), reducedVector.end());
+    auto maxIndex = (aData.size() - reducedVector.size()) +
+                    (maxElement - reducedVector.begin());
+
+    return maxIndex;
+
+  } else {
+    return -1;
+  }
 }
 
 } // namespace POID_DGMK
