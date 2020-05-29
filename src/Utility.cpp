@@ -9,10 +9,12 @@
 #include <assert.h>
 #include <tuple>
 
-namespace POID_DGMK {
+namespace POID_DGMK
+{
 namespace plt = matplotlibcpp;
 
-void Utility::FFT(CArray &x) {
+void Utility::FFT(CArray& x)
+{
   const size_t N = x.size();
   if (N <= 1)
     return;
@@ -23,53 +25,63 @@ void Utility::FFT(CArray &x) {
   FFT(even);
   FFT(odd);
 
-  for (size_t k = 0; k < N / 2; ++k) {
+  for (size_t k = 0; k < N / 2; ++k)
+  {
     TComplex t = std::polar(1.0, -2 * M_PI * k / N) * odd[k];
     x[k] = even[k] + t;
     x[k + N / 2] = even[k] - t;
   }
 }
 
-void Utility::IFFT(CArray &x) {
+void Utility::IFFT(CArray& x)
+{
   x = x.apply(std::conj);
   FFT(x);
   x = x.apply(std::conj);
   x /= x.size();
 }
 
-std::vector<double>
-Utility::GetBaseFreqPlotData(const AudioFile<double> &aAudioSource,
-                             const std::vector<double> &aPitches,
-                             int aWindowSize) {
+std::vector<double> Utility::GetBaseFreqPlotData(const AudioFile<double>& aAudioSource,
+                                                 const std::vector<double>& aPitches,
+                                                 int aWindowSize)
+{
 
   constexpr double kEpsilon = 5;
 
   const double kMin = *std::min(aPitches.begin(), aPitches.end());
   const double kMax = *std::max(aPitches.begin(), aPitches.end());
   const double kAvg =
-      std::accumulate(aPitches.begin(), aPitches.end(), 0) / aPitches.size();
+    std::accumulate(aPitches.begin(), aPitches.end(), 0) / aPitches.size();
 
   std::vector<std::vector<double>> pitchesGroups;
   std::vector<double> pitchesGroup;
 
-  for (int i = 0; i < aPitches.size(); ++i) {
-    if (pitchesGroup.empty()) {
+  for (int i = 0; i < aPitches.size(); ++i)
+  {
+    if (pitchesGroup.empty())
+    {
       pitchesGroup.push_back(aPitches[i]);
-    } else {
+    }
+    else
+    {
       auto tmpVec = pitchesGroup;
       tmpVec.push_back(aPitches[i]);
       auto min = *std::min_element(tmpVec.begin(), tmpVec.end());
       auto max = *std::max_element(tmpVec.begin(), tmpVec.end());
-      if (max - min <= kEpsilon) {
+      if (max - min <= kEpsilon)
+      {
         pitchesGroup.push_back(aPitches[i]);
-      } else {
+      }
+      else
+      {
         pitchesGroups.push_back(pitchesGroup);
         pitchesGroup.clear();
         pitchesGroup.push_back(aPitches[i]);
       }
     }
   }
-  if (!pitchesGroup.empty()) {
+  if (!pitchesGroup.empty())
+  {
     pitchesGroups.push_back(pitchesGroup);
   }
 
@@ -77,19 +89,24 @@ Utility::GetBaseFreqPlotData(const AudioFile<double> &aAudioSource,
 
   auto lastGroupSize = aAudioSource.samples[0].size() % aWindowSize;
 
-  for (int i = 0; i < pitchesGroups.size(); ++i) {
+  for (int i = 0; i < pitchesGroups.size(); ++i)
+  {
     const auto avg =
-        std::accumulate(pitchesGroups[i].begin(), pitchesGroups[i].end(), 0) /
-        pitchesGroups[i].size();
+      std::accumulate(pitchesGroups[i].begin(), pitchesGroups[i].end(), 0) /
+      pitchesGroups[i].size();
     auto groupSize = 0;
 
-    if (i == pitchesGroups.size() - 1) {
+    if (i == pitchesGroups.size() - 1)
+    {
       groupSize = (pitchesGroups[i].size() - 1) * aWindowSize + lastGroupSize;
-    } else {
+    }
+    else
+    {
       groupSize = pitchesGroups[i].size() * aWindowSize;
     }
 
-    for (int j = 0; j < groupSize; ++j) {
+    for (int j = 0; j < groupSize; ++j)
+    {
       pitchData.push_back(avg);
     }
   }
@@ -97,8 +114,8 @@ Utility::GetBaseFreqPlotData(const AudioFile<double> &aAudioSource,
   return pitchData;
 }
 
-bool Utility::LoadSound(std::string &aFileName,
-                        AudioFile<double> &aSoundToUpdate) {
+bool Utility::LoadSound(std::string& aFileName, AudioFile<double>& aSoundToUpdate)
+{
   std::cout << "Insert file name from directory 'resources': \n";
   std::cin >> aFileName;
 
@@ -109,27 +126,29 @@ bool Utility::LoadSound(std::string &aFileName,
   return aSoundToUpdate.load(filePath);
 }
 
-void Utility::LoadSoundUntilSuccessful(std::string &aFileName,
-                                       AudioFile<double> &aSoundToUpdate) {
-  if (!LoadSound(aFileName, aSoundToUpdate)) {
+void Utility::LoadSoundUntilSuccessful(std::string& aFileName, AudioFile<double>& aSoundToUpdate)
+{
+  if (!LoadSound(aFileName, aSoundToUpdate))
+  {
     LoadSoundUntilSuccessful(aFileName, aSoundToUpdate);
   }
 }
 
-void Utility::ShowPlot(const std::vector<double> &aData,
-                       const std::string &aName) {
+void Utility::ShowPlot(const std::vector<double>& aData, const std::string& aName)
+{
   plt::plot(aData);
   plt::title(aName);
   plt::show();
 }
 
-PlotData Utility::GetSegmentedSamples(const std::vector<double> &aSamples,
-                                      int aWindowSize) {
+PlotData Utility::GetSegmentedSamples(const std::vector<double>& aSamples, int aWindowSize)
+{
 
   std::vector<double> samplesCopy(aSamples.begin(), aSamples.end());
 
   double average = 0;
-  for (int i = 0; i < samplesCopy.size(); ++i) {
+  for (int i = 0; i < samplesCopy.size(); ++i)
+  {
     average += std::abs(samplesCopy[i]);
   }
 
@@ -150,23 +169,26 @@ PlotData Utility::GetSegmentedSamples(const std::vector<double> &aSamples,
 
   bool wasPreviousPowerNotSufficent = false;
 
-  for (int i = 1; i <= numberOfFullBatches; ++i) {
+  for (int i = 1; i <= numberOfFullBatches; ++i)
+  {
     std::vector<double> batch;
-    for (int j = (i - 1) * aWindowSize; j < i * aWindowSize; ++j) {
+    for (int j = (i - 1) * aWindowSize; j < i * aWindowSize; ++j)
+    {
       batch.push_back(aSamples[j]);
     }
 
     bool isMinimalValueNotExceeded =
-        *std::max_element(batch.begin(), batch.end())<
-            average && * std::min_element(batch.begin(), batch.end())> -
-        1 * average;
+      *std::max_element(
+        batch.begin(),
+        batch.end())<average&& * std::min_element(batch.begin(), batch.end())> -
+      1 * average;
 
-    int valToInsert =
-        isMinimalValueNotExceeded || wasPreviousPowerNotSufficent ? 0 : 1;
+    int valToInsert = isMinimalValueNotExceeded || wasPreviousPowerNotSufficent ? 0 : 1;
 
     wasPreviousPowerNotSufficent = isMinimalValueNotExceeded;
 
-    for (int j = 0; j < batch.size(); ++j) {
+    for (int j = 0; j < batch.size(); ++j)
+    {
       mask.push_back(valToInsert);
     }
 
@@ -175,19 +197,21 @@ PlotData Utility::GetSegmentedSamples(const std::vector<double> &aSamples,
 
   std::vector<double> lastBatch;
   for (int i = numberOfFullBatches * aWindowSize;
-       i < numberOfFullBatches * aWindowSize + numberpOfSamplesInLastBatch;
-       ++i) {
+       i < numberOfFullBatches * aWindowSize + numberpOfSamplesInLastBatch; ++i)
+  {
     lastBatch.push_back(aSamples[i]);
   }
 
   bool isMinimalValueNotExceeded =
-      *std::max_element(lastBatch.begin(), lastBatch.end())<
-          average && * std::min_element(lastBatch.begin(), lastBatch.end())> -
-      1 * average;
+    *std::max_element(
+      lastBatch.begin(),
+      lastBatch.end())<average&& * std::min_element(lastBatch.begin(), lastBatch.end())> -
+    1 * average;
 
   int valToInsert = isMinimalValueNotExceeded ? 0 : 1;
 
-  for (int j = 0; j < lastBatch.size(); ++j) {
+  for (int j = 0; j < lastBatch.size(); ++j)
+  {
     mask.push_back(valToInsert);
   }
 
@@ -200,27 +224,32 @@ PlotData Utility::GetSegmentedSamples(const std::vector<double> &aSamples,
   return toReturn;
 }
 
-std::vector<double>
-Utility::GeneratePitchSignal(const AudioFile<double> &aSource,
-                             const std::vector<double> &aPitchData) {
+std::vector<double> Utility::GeneratePitchSignal(const AudioFile<double>& aSource,
+                                                 const std::vector<double>& aPitchData)
+{
   assert(aPitchData.size() > 1);
   std::vector<double> pitchSignal;
 
   double prevPitchValue = std::numeric_limits<double>::lowest();
   int numberOfSamplesPerPeriod = 0;
-  for (int i = 0; i < aPitchData.size(); ++i) {
-    if (prevPitchValue != aPitchData[i]) {
+  for (int i = 0; i < aPitchData.size(); ++i)
+  {
+    if (prevPitchValue != aPitchData[i])
+    {
       prevPitchValue = aPitchData[i];
       numberOfSamplesPerPeriod = aSource.getSampleRate() / aPitchData[i];
     }
 
-    if (aPitchData[i] != 0) {
+    if (aPitchData[i] != 0)
+    {
       int modulo = i % numberOfSamplesPerPeriod;
       double factor = 1.0 * modulo / numberOfSamplesPerPeriod;
       double arg = (2 * M_PI) * factor;
       double sinVal = sin(arg);
       pitchSignal.push_back(sinVal);
-    } else {
+    }
+    else
+    {
       pitchSignal.push_back(0);
     }
   }
@@ -228,30 +257,62 @@ Utility::GeneratePitchSignal(const AudioFile<double> &aSource,
   return pitchSignal;
 }
 
-int Utility::FindIndexOfMaximum(const std::vector<double> aData) {
+int Utility::FindIndexOfMaximum(const std::vector<double> aData)
+{
   std::vector<double> reducedVector;
   bool isIncreaseReached = false;
   int i = 0;
-  for (; i < aData.size(); ++i) {
-    if (aData[i + 1] > aData[i]) {
+  for (; i < aData.size(); ++i)
+  {
+    if (aData[i + 1] > aData[i])
+    {
       isIncreaseReached = true;
     }
 
-    if (isIncreaseReached) {
+    if (isIncreaseReached)
+    {
       reducedVector.push_back(aData[i]);
     }
   }
 
-  if (!reducedVector.empty()) {
-    auto maxElement =
-        std::max_element(reducedVector.begin(), reducedVector.end());
-    auto maxIndex = (aData.size() - reducedVector.size()) +
-                    (maxElement - reducedVector.begin());
+  if (!reducedVector.empty())
+  {
+    auto maxElement = std::max_element(reducedVector.begin(), reducedVector.end());
+    auto maxIndex =
+      (aData.size() - reducedVector.size()) + (maxElement - reducedVector.begin());
 
     return maxIndex;
-
-  } else {
+  }
+  else
+  {
     return -1;
+  }
+}
+
+void Utility::ApplyWindowFunction(std::vector<double>& aData, WindowFunctionType aWindowFunctionType)
+{
+  switch (aWindowFunctionType)
+  {
+  case WindowFunctionType::Rectangle:
+  {
+    break;
+  }
+  case WindowFunctionType::Hamming:
+  {
+    for (int i = 0; i < aData.size(); ++i)
+    {
+      aData[i] *= (0.53836 - 0.46164 * cos(2 * M_PI * i / (1.0 * (aData.size() - 1))));
+    }
+    break;
+  }
+  case WindowFunctionType::Hanning:
+  {
+    for (int i = 0; i < aData.size(); ++i)
+    {
+      aData[i] *= 0.5 * (1 - cos((2 * M_PI * i) / (aData.size() - 1)));
+    }
+    break;
+  }
   }
 }
 

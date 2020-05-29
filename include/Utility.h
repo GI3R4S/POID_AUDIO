@@ -14,6 +14,8 @@ struct PlotData {
   std::vector<int> mask;
 };
 
+enum class WindowFunctionType { Rectangle, Hamming, Hanning };
+
 class Utility {
 public:
   static void ShowPlot(const std::vector<double> &aData,
@@ -37,6 +39,9 @@ public:
   static std::vector<double>
   GeneratePitchSignal(const AudioFile<double> &aSource,
                       const std::vector<double> &aPitchData);
+
+  static void ApplyWindowFunction(std::vector<double> &aData,
+                                  WindowFunctionType aWindowFunctionType);
 
   using TComplex = std::complex<double>;
   using CArray = std::valarray<TComplex>;

@@ -12,9 +12,11 @@
 #include <valarray>
 #include <vector>
 
-namespace POID_DGMK {
+namespace POID_DGMK
+{
 
-void UserChoiceHandler::ViewMenu() {
+void UserChoiceHandler::ViewMenu()
+{
   std::cout << "==============================================\n"
             << "[1] Compare pitch detection between autocorelation and "
                "cepstrum analysis\n"
@@ -25,57 +27,99 @@ void UserChoiceHandler::ViewMenu() {
             << "==============================================\n";
 }
 
-void UserChoiceHandler::HandleUserChoice(std::string &aInputFile,
-                                         AudioFile<double> &aBaseSound) {
+void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<double>& aBaseSound)
+{
   char userChoice;
   std::cout << "\n Select action: \n";
   std::cin >> userChoice;
 
-  switch (userChoice) {
-  case '1': {
-    auto &audioSource = aBaseSound;
+  switch (userChoice)
+  {
+  case '1':
+  {
+    auto& audioSource = aBaseSound;
 
     char windowSizeChoice;
+    char windowFunctionTypeChoice;
     int windowSize = 0;
+    int hopSize = 0;
+    WindowFunctionType windowFunctionType;
     const std::vector<char> kPossibleChoices{'1', '2', '3'};
 
-    do {
+    do
+    {
       std::cout
-          << "\nSelect window size:\n'1' = 1024\n'2' = 2048\n'3' = 4096\n";
+        << "\nSelect window size:\n'1' = 1024\n'2' = 2048\n'3' = 4096\n";
       std::cin >> windowSizeChoice;
     } while (std::find(kPossibleChoices.begin(), kPossibleChoices.end(),
                        windowSizeChoice) == kPossibleChoices.end());
 
-    switch (windowSizeChoice) {
-    case '1': {
+    do
+    {
+      std::cout << "\nSelect window type:\n'1': Rectangle\n'2': Hamming\n'3': "
+                   "Hanning\n";
+      std::cin >> windowFunctionTypeChoice;
+    } while (std::find(kPossibleChoices.begin(), kPossibleChoices.end(),
+                       windowFunctionTypeChoice) == kPossibleChoices.end());
+
+    switch (windowSizeChoice)
+    {
+    case '1':
+    {
       windowSize = 1024;
       break;
     }
-    case '2': {
+    case '2':
+    {
       windowSize = 2048;
       break;
     }
-    case '3': {
+    case '3':
+    {
       windowSize = 4096;
       break;
     }
     }
 
+    switch (windowFunctionTypeChoice)
+    {
+    case '1':
+    {
+      windowFunctionType = WindowFunctionType::Rectangle;
+      break;
+    }
+    case '2':
+    {
+      windowFunctionType = WindowFunctionType::Hamming;
+      break;
+    }
+    case '3':
+    {
+      windowFunctionType = WindowFunctionType::Hanning;
+      break;
+    }
+    }
+
+    std::cout << "Insert hop size:\n" << std::endl;
+    std::cin >> hopSize;
+
     std::cout << "Loaded window size: " << windowSize << std::endl;
-    auto plotData =
-        Utility::GetSegmentedSamples(audioSource.samples[0], windowSize);
+    auto plotData = Utility::GetSegmentedSamples(audioSource.samples[0], windowSize);
     std::vector<std::vector<double>> batches = plotData.segmentedPlotData;
     std::vector<int> mask = plotData.mask;
 
     std::vector<double> pitchesAutoCorrelation;
 
-    for (const auto &batch : batches) {
+    for (const auto& batch : batches)
+    {
 
       std::vector<double> transformedSignal;
 
-      for (int m = 1; m < batch.size(); ++m) {
+      for (int m = 1; m < batch.size(); ++m)
+      {
         double sum = 0;
-        for (int i = 0; i < batch.size(); ++i) {
+        for (int i = 0; i < batch.size(); ++i)
+        {
           double value = batch[i];
 
           value *= m + i < batch.size() ? batch[m + i] : 0;
@@ -85,14 +129,13 @@ void UserChoiceHandler::HandleUserChoice(std::string &aInputFile,
       }
 
       // Utility::ShowPlot(batch, "Discrete time signal");
-      // Utility::ShowPlot(transformedSignal, "Autocorelation of discrete  signal");
+      // Utility::ShowPlot(transformedSignal, "Autocorelation of discrete signal");
 
       int maxIndexAutocorr = Utility::FindIndexOfMaximum(transformedSignal);
-      double baseFrequency =
-          maxIndexAutocorr == -1
-              ? 0
-              : static_cast<double>(audioSource.getSampleRate()) /
-                    (maxIndexAutocorr + 1);
+      double baseFrequency = maxIndexAutocorr == -1
+                               ? 0
+                               : static_cast<double>(audioSource.getSampleRate()) /
+                                   (maxIndexAutocorr + 1);
 
       // std::endl; ShowPlot(batch, "base"); ShowPlot(transformedSignal,
       // "auto");
@@ -100,42 +143,43 @@ void UserChoiceHandler::HandleUserChoice(std::string &aInputFile,
       pitchesAutoCorrelation.push_back(baseFrequency);
     }
 
-    std::vector<double> pitchDataAutocorrelation = Utility::GetBaseFreqPlotData(
-        audioSource, pitchesAutoCorrelation, windowSize);
+    std::vector<double> pitchDataAutocorrelation =
+      Utility::GetBaseFreqPlotData(audioSource, pitchesAutoCorrelation, windowSize);
 
     std::vector<double> pitchesCepstrum;
 
-    for (auto &batch : batches) {
+    for (auto batch : batches)
+    {
 
       CArray freqDomainData(windowSize);
 
       // Utility::ShowPlot(batch, "Basic signal before windowing");
       // okienkowanie przez funkcje Hamminga
-      for (int i = 0; i < batch.size(); ++i) {
-        batch[i] *= (0.53836 -
-                     0.46164 * cos(2 * M_PI * i / (1.0 * (batch.size() - 1))));
-      }
+
+      Utility::ApplyWindowFunction(batch, windowFunctionType);
 
       // Utility::ShowPlot(batch, "Basic signal windowed by Hamming function");
 
-      for (int i = 0; i < batch.size(); ++i) {
+      for (int i = 0; i < batch.size(); ++i)
+      {
         freqDomainData[i] = batch[i];
       }
 
       Utility::FFT(freqDomainData);
       CArray halfOfFreqData(windowSize / 2);
 
-      for (int i = 0; i < windowSize / 2; ++i) {
+      for (int i = 0; i < windowSize / 2; ++i)
+      {
         halfOfFreqData[i] = freqDomainData[i];
       }
 
       CArray firstSpectrum(windowSize / 2);
       std::vector<double> firstSpectrumVec(windowSize / 2);
 
-      for (int i = 0; i < windowSize / 2; ++i) {
-        double val = log(sqrt(pow(halfOfFreqData[i].real(), 2) +
-                              pow(halfOfFreqData[i].imag(), 2)) +
-                         M_E);
+      for (int i = 0; i < windowSize / 2; ++i)
+      {
+        double val =
+          log(sqrt(pow(halfOfFreqData[i].real(), 2) + pow(halfOfFreqData[i].imag(), 2)) + M_E);
         firstSpectrum[i] = val;
         firstSpectrumVec[i] = val;
       }
@@ -144,12 +188,14 @@ void UserChoiceHandler::HandleUserChoice(std::string &aInputFile,
       Utility::FFT(firstSpectrum);
 
       CArray halfOfFirstSpectrum(windowSize / 4);
-      for (int i = 0; i < windowSize / 4; ++i) {
+      for (int i = 0; i < windowSize / 4; ++i)
+      {
         halfOfFirstSpectrum[i] = firstSpectrum[i];
       }
 
       std::vector<double> secondSpectrum(windowSize / 4);
-      for (int i = 0; i < windowSize / 4; ++i) {
+      for (int i = 0; i < windowSize / 4; ++i)
+      {
         double val = val = sqrt(pow(halfOfFirstSpectrum[i].real(), 2) +
                                 pow(halfOfFirstSpectrum[i].imag(), 2));
 
@@ -159,20 +205,21 @@ void UserChoiceHandler::HandleUserChoice(std::string &aInputFile,
       int maxIndexCep = Utility::FindIndexOfMaximum(secondSpectrum);
 
       double baseFrequencyCep =
-          maxIndexCep == -1 ? 0
-                            : static_cast<double>(audioSource.getSampleRate()) /
-                                  (maxIndexCep * 2);
+        maxIndexCep == -1
+          ? 0
+          : static_cast<double>(audioSource.getSampleRate()) / (maxIndexCep * 2);
 
       pitchesCepstrum.push_back(baseFrequencyCep);
     }
 
     std::vector<double> pitchDataCepstrum =
-        Utility::GetBaseFreqPlotData(audioSource, pitchesCepstrum, windowSize);
+      Utility::GetBaseFreqPlotData(audioSource, pitchesCepstrum, windowSize);
 
     assert(audioSource.samples[0].size() == pitchDataAutocorrelation.size());
     assert(audioSource.samples[0].size() == pitchDataCepstrum.size());
 
-    for (int i = 0; i < audioSource.samples[0].size(); ++i) {
+    for (int i = 0; i < audioSource.samples[0].size(); ++i)
+    {
       pitchDataAutocorrelation[i] *= mask[i];
       pitchDataCepstrum[i] *= mask[i];
     }
@@ -184,17 +231,15 @@ void UserChoiceHandler::HandleUserChoice(std::string &aInputFile,
     matplotlibcpp::named_plot("Signal", audioSource.samples[0]);
     matplotlibcpp::legend();
     matplotlibcpp::subplot(2, 1, 2);
-    matplotlibcpp::named_plot("Pitch detected by autocorrelation",
-                              pitchDataAutocorrelation);
+    matplotlibcpp::named_plot("Pitch detected by autocorrelation", pitchDataAutocorrelation);
     matplotlibcpp::named_plot("Pitch detected by cepstrum", pitchDataCepstrum);
     matplotlibcpp::title("Pitch detection comparision");
     matplotlibcpp::legend();
     matplotlibcpp::show();
 
     auto autocorrPitchData =
-        Utility::GeneratePitchSignal(audioSource, pitchDataAutocorrelation);
-    auto cepstrumPitchData =
-        Utility::GeneratePitchSignal(audioSource, pitchDataCepstrum);
+      Utility::GeneratePitchSignal(audioSource, pitchDataAutocorrelation);
+    auto cepstrumPitchData = Utility::GeneratePitchSignal(audioSource, pitchDataCepstrum);
 
     matplotlibcpp::subplot(3, 1, 1);
     matplotlibcpp::title("Discrete time domain signal");
@@ -242,19 +287,22 @@ void UserChoiceHandler::HandleUserChoice(std::string &aInputFile,
     break;
   }
   case 'l':
-  case 'L': {
+  case 'L':
+  {
 
     POID_DGMK::Utility::LoadSoundUntilSuccessful(aInputFile, aBaseSound);
     break;
   }
 
   case 'q':
-  case 'Q': {
+  case 'Q':
+  {
     exit(0);
     break;
   }
   case 's':
-  case 'S': {
+  case 'S':
+  {
     std::string fileName;
     std::string fileNameTmp;
     fileName.append(RESOURCES_DIR);
@@ -266,15 +314,17 @@ void UserChoiceHandler::HandleUserChoice(std::string &aInputFile,
     break;
   }
   case 'v':
-  case 'V': {
-    auto &audioSource = aBaseSound;
+  case 'V':
+  {
+    auto& audioSource = aBaseSound;
     audioSource.printSummary();
 
     std::cin.ignore();
     std::cin.get();
     break;
   }
-  default: {
+  default:
+  {
     std::cout << "Unhandled option chosen\n";
     break;
   }
