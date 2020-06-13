@@ -154,11 +154,6 @@ PlotData Utility::GetSegmentedSamples(const std::vector<double>& aSamples, int a
 
   average /= samplesCopy.size();
   average *= 1.5;
-  // samplesCopy.size() % 2 == 1
-  //                  ? samplesCopy[samplesCopy.size() / 2]
-  //                  : (samplesCopy[samplesCopy.size() / 2 - 1] +
-  //                     samplesCopy[samplesCopy.size() / 2]) /
-  //                        2;
 
   std::cout << "average: " << average << std::endl;
   std::vector<int> mask;
@@ -301,19 +296,82 @@ void Utility::ApplyWindowFunction(std::vector<double>& aData, WindowFunctionType
   {
     for (int i = 0; i < aData.size(); ++i)
     {
-      aData[i] *= (0.53836 - 0.46164 * cos(2 * M_PI * i / (1.0 * (aData.size() - 1))));
+      if (i == 0 || i == aData.size() - 1)
+      {
+        aData[i] *=
+          0.5 * (0.53836 - 0.46164 * cos(2 * M_PI * i / (1.0 * (aData.size() - 1))));
+      }
+      else
+      {
+        aData[i] *=
+          (0.53836 - 0.46164 * cos(2 * M_PI * i / (1.0 * (aData.size() - 1))));
+      }
     }
+
     break;
   }
   case WindowFunctionType::Hanning:
   {
     for (int i = 0; i < aData.size(); ++i)
     {
-      aData[i] *= 0.5 * (1 - cos((2 * M_PI * i) / (aData.size() - 1)));
+      if (i == 0 || i == aData.size() - 1)
+      {
+        aData[i] *= 0.5 * 0.5 * (1 - cos((2 * M_PI * i) / (aData.size() - 1)));
+      }
+      else
+      {
+        aData[i] *= 0.5 * (1 - cos((2 * M_PI * i) / (aData.size() - 1)));
+      }
     }
     break;
   }
   }
+}
+
+std::vector<std::vector<double>> Utility::GetSegmentedSignal(const std::vector<double>& aSamples,
+                                                             int aWindowSize,
+                                                             int aHopSize)
+
+{
+  std::vector<std::vector<double>> batches;
+  int numberOfHops = aSamples.size() / aHopSize;
+
+  for (int m = 0; m <= numberOfHops; ++m)
+  {
+    std::cout << "=======================================" << std::endl;
+    int firstIndexOfBatch = m * aHopSize;
+    int maxIndexOfBatch = m * aHopSize + aWindowSize;
+    std::cout << "First index: " << firstIndexOfBatch << std::endl;
+    std::cout << "Max index: " << maxIndexOfBatch << std::endl;
+
+    std::vector<double> batch;
+
+    if (maxIndexOfBatch > aSamples.size())
+    {
+      for (int i = firstIndexOfBatch; i < aSamples.size(); ++i)
+      {
+        batch.push_back(aSamples[i]);
+      }
+      int samplesToFill = aWindowSize - batch.size();
+      for (int i = 0; i < samplesToFill; ++i)
+      {
+        batch.push_back(0);
+      }
+      std::cout << "Ups, requires filling: " << std::endl;
+    }
+    else
+    {
+      for (int i = firstIndexOfBatch; i < maxIndexOfBatch; ++i)
+      {
+        batch.push_back(aSamples[i]);
+      }
+    }
+    std::cout << "Batch size: " << batch.size() << std::endl;
+    std::cout << "=======================================" << std::endl;
+    batches.push_back(batch);
+  }
+
+  return batches;
 }
 
 } // namespace POID_DGMK

@@ -24,6 +24,10 @@ public:
   static PlotData GetSegmentedSamples(const std::vector<double> &aSamples,
                                       int aWindowSize);
 
+  static std::vector<std::vector<double>>
+  GetSegmentedSignal(const std::vector<double> &aSamples, int aWindowSize,
+                     int aHopSize);
+
   static bool LoadSound(std::string &aFileName,
                         AudioFile<double> &aSoundToUpdate);
 

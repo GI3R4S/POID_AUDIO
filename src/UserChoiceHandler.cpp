@@ -46,244 +46,317 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
     WindowFunctionType windowFunctionType;
     const std::vector<char> kPossibleChoices{'1', '2', '3'};
 
-    do
+    std::vector<double> signal;
+    for (int i = 0; i < 44100; ++i)
     {
-      std::cout
-        << "\nSelect window size:\n'1' = 1024\n'2' = 2048\n'3' = 4096\n";
-      std::cin >> windowSizeChoice;
-    } while (std::find(kPossibleChoices.begin(), kPossibleChoices.end(),
-                       windowSizeChoice) == kPossibleChoices.end());
-
-    do
-    {
-      std::cout << "\nSelect window type:\n'1': Rectangle\n'2': Hamming\n'3': "
-                   "Hanning\n";
-      std::cin >> windowFunctionTypeChoice;
-    } while (std::find(kPossibleChoices.begin(), kPossibleChoices.end(),
-                       windowFunctionTypeChoice) == kPossibleChoices.end());
-
-    switch (windowSizeChoice)
-    {
-    case '1':
-    {
-      windowSize = 1024;
-      break;
-    }
-    case '2':
-    {
-      windowSize = 2048;
-      break;
-    }
-    case '3':
-    {
-      windowSize = 4096;
-      break;
-    }
+      signal.push_back(1);
     }
 
-    switch (windowFunctionTypeChoice)
+    auto batchesWithHops = Utility::GetSegmentedSignal(audioSource.samples[0], 33, 16);
+    // auto batchesWithHops = Utility::GetSegmentedSignal(signal, 2049, 1024);
+
+    for (auto& batch : batchesWithHops)
     {
-    case '1':
-    {
-      windowFunctionType = WindowFunctionType::Rectangle;
-      break;
-    }
-    case '2':
-    {
-      windowFunctionType = WindowFunctionType::Hamming;
-      break;
-    }
-    case '3':
-    {
-      windowFunctionType = WindowFunctionType::Hanning;
-      break;
-    }
+      Utility::ApplyWindowFunction(batch, WindowFunctionType::Hamming);
     }
 
-    std::cout << "Insert hop size:\n" << std::endl;
-    std::cin >> hopSize;
+    int filterLength = 21;
+    int cutoff_freq = 3000;
 
-    std::cout << "Loaded window size: " << windowSize << std::endl;
-    auto plotData = Utility::GetSegmentedSamples(audioSource.samples[0], windowSize);
-    std::vector<std::vector<double>> batches = plotData.segmentedPlotData;
-    std::vector<int> mask = plotData.mask;
-
-    std::vector<double> pitchesAutoCorrelation;
-
-    for (const auto& batch : batches)
+    std::vector<double> coefficients;
+    for (int i = 0; i < filterLength; ++i)
     {
+      if (i == (filterLength - 1) / 2)
+      {
+        coefficients.push_back(2.0 * cutoff_freq / 44100.0);
+      }
+      else
+      {
+        double value =
+          sin((2 * M_PI * cutoff_freq / (44100.0)) * (i - ((filterLength - 1) / 2.0))) /
+          (M_PI * (i - ((filterLength - 1) / 2)));
+        coefficients.push_back(value);
+      }
+    }
 
-      std::vector<double> transformedSignal;
+    for (int i = 0; batchesWithHops.size(); ++i)
+    {
+      std::vector<double> tmp;
 
-      for (int m = 1; m < batch.size(); ++m)
+      for (int j = 0; j < filterLength - 1; ++j)
+      {
+        tmp.push_back(0);
+      }
+
+      tmp.insert(tmp.end(), batchesWithHops[i].begin(), batchesWithHops[i].end());
+
+      for (int j = 0; j < filterLength - 1; ++j)
+      {
+        tmp.push_back(0);
+      }
+
+      batchesWithHops[i] = tmp;
+    }
+
+    std::vector<std::vector<double>> timeDomainOutput;
+
+    for (int i = 0; batchesWithHops.size(); ++i)
+    {
+      timeDomainOutput.push_back(std::vector<double>());
+
+      for (int j = filterLength; j < batchesWithHops[i].size() - filterLength; ++j)
       {
         double sum = 0;
-        for (int i = 0; i < batch.size(); ++i)
+        for (int k = 0; k < filterLength; ++k)
         {
-          double value = batch[i];
-
-          value *= m + i < batch.size() ? batch[m + i] : 0;
-          sum += value;
+          sum += batchesWithHops[i][j - k] * coefficients[k];
         }
-        transformedSignal.push_back(sum);
+        timeDomainOutput[i].push_back(sum);
       }
-
-      // Utility::ShowPlot(batch, "Discrete time signal");
-      // Utility::ShowPlot(transformedSignal, "Autocorelation of discrete signal");
-
-      int maxIndexAutocorr = Utility::FindIndexOfMaximum(transformedSignal);
-      double baseFrequency = maxIndexAutocorr == -1
-                               ? 0
-                               : static_cast<double>(audioSource.getSampleRate()) /
-                                   (maxIndexAutocorr + 1);
-
-      // std::endl; ShowPlot(batch, "base"); ShowPlot(transformedSignal,
-      // "auto");
-
-      pitchesAutoCorrelation.push_back(baseFrequency);
     }
 
-    std::vector<double> pitchDataAutocorrelation =
-      Utility::GetBaseFreqPlotData(audioSource, pitchesAutoCorrelation, windowSize);
-
-    std::vector<double> pitchesCepstrum;
-
-    for (auto batch : batches)
+    for (auto coeff : coefficients)
     {
-
-      CArray freqDomainData(windowSize);
-
-      // Utility::ShowPlot(batch, "Basic signal before windowing");
-      // okienkowanie przez funkcje Hamminga
-
-      Utility::ApplyWindowFunction(batch, windowFunctionType);
-
-      // Utility::ShowPlot(batch, "Basic signal windowed by Hamming function");
-
-      for (int i = 0; i < batch.size(); ++i)
-      {
-        freqDomainData[i] = batch[i];
-      }
-
-      Utility::FFT(freqDomainData);
-      CArray halfOfFreqData(windowSize / 2);
-
-      for (int i = 0; i < windowSize / 2; ++i)
-      {
-        halfOfFreqData[i] = freqDomainData[i];
-      }
-
-      CArray firstSpectrum(windowSize / 2);
-      std::vector<double> firstSpectrumVec(windowSize / 2);
-
-      for (int i = 0; i < windowSize / 2; ++i)
-      {
-        double val =
-          log(sqrt(pow(halfOfFreqData[i].real(), 2) + pow(halfOfFreqData[i].imag(), 2)) + M_E);
-        firstSpectrum[i] = val;
-        firstSpectrumVec[i] = val;
-      }
-
-      // ShowPlot(firstSpectrumVec, "Freq domain - log(mag) signal");
-      Utility::FFT(firstSpectrum);
-
-      CArray halfOfFirstSpectrum(windowSize / 4);
-      for (int i = 0; i < windowSize / 4; ++i)
-      {
-        halfOfFirstSpectrum[i] = firstSpectrum[i];
-      }
-
-      std::vector<double> secondSpectrum(windowSize / 4);
-      for (int i = 0; i < windowSize / 4; ++i)
-      {
-        double val = val = sqrt(pow(halfOfFirstSpectrum[i].real(), 2) +
-                                pow(halfOfFirstSpectrum[i].imag(), 2));
-
-        secondSpectrum[i] = val;
-      }
-
-      int maxIndexCep = Utility::FindIndexOfMaximum(secondSpectrum);
-
-      double baseFrequencyCep =
-        maxIndexCep == -1
-          ? 0
-          : static_cast<double>(audioSource.getSampleRate()) / (maxIndexCep * 2);
-
-      pitchesCepstrum.push_back(baseFrequencyCep);
+      std::cout << coeff << std::endl;
     }
 
-    std::vector<double> pitchDataCepstrum =
-      Utility::GetBaseFreqPlotData(audioSource, pitchesCepstrum, windowSize);
-
-    assert(audioSource.samples[0].size() == pitchDataAutocorrelation.size());
-    assert(audioSource.samples[0].size() == pitchDataCepstrum.size());
-
-    for (int i = 0; i < audioSource.samples[0].size(); ++i)
-    {
-      pitchDataAutocorrelation[i] *= mask[i];
-      pitchDataCepstrum[i] *= mask[i];
-    }
-
-    // Utility::ShowPlot(audioSource.samples[0], "Discrete time domain signal");
-
-    matplotlibcpp::subplot(2, 1, 1);
-    matplotlibcpp::title("Discrete time domain signal");
-    matplotlibcpp::named_plot("Signal", audioSource.samples[0]);
-    matplotlibcpp::legend();
-    matplotlibcpp::subplot(2, 1, 2);
-    matplotlibcpp::named_plot("Pitch detected by autocorrelation", pitchDataAutocorrelation);
-    matplotlibcpp::named_plot("Pitch detected by cepstrum", pitchDataCepstrum);
-    matplotlibcpp::title("Pitch detection comparision");
-    matplotlibcpp::legend();
+    std::vector<double> plotData;
+    matplotlibcpp::named_plot("Data", batchesWithHops[0]);
     matplotlibcpp::show();
 
-    auto autocorrPitchData =
-      Utility::GeneratePitchSignal(audioSource, pitchDataAutocorrelation);
-    auto cepstrumPitchData = Utility::GeneratePitchSignal(audioSource, pitchDataCepstrum);
+    // std::cout << "DUPA" << std::endl;
 
-    matplotlibcpp::subplot(3, 1, 1);
-    matplotlibcpp::title("Discrete time domain signal");
-    matplotlibcpp::named_plot("Signal", audioSource.samples[0]);
-    matplotlibcpp::legend();
+    // do {
+    //   std::cout
+    //       << "\nSelect window size:\n'1' = 1024\n'2' = 2048\n'3' = 4096\n";
+    //   std::cin >> windowSizeChoice;
+    // } while (std::find(kPossibleChoices.begin(), kPossibleChoices.end(),
+    //                    windowSizeChoice) == kPossibleChoices.end());
 
-    matplotlibcpp::subplot(3, 1, 2);
-    matplotlibcpp::title("Sine wave generated from autocorrelation pitch");
-    matplotlibcpp::named_plot("Signal", autocorrPitchData);
-    matplotlibcpp::legend();
+    // do {
+    //   std::cout << "\nSelect window type:\n'1': Rectangle\n'2': Hamming\n'3':
+    //   "
+    //                "Hanning\n";
+    //   std::cin >> windowFunctionTypeChoice;
+    // } while (std::find(kPossibleChoices.begin(), kPossibleChoices.end(),
+    //                    windowFunctionTypeChoice) == kPossibleChoices.end());
 
-    matplotlibcpp::subplot(3, 1, 3);
-    matplotlibcpp::title("Sine wave generated from cepstrum pitch");
-    matplotlibcpp::named_plot("Signal", cepstrumPitchData);
-    matplotlibcpp::legend();
+    // switch (windowSizeChoice) {
+    // case '1': {
+    //   windowSize = 1024;
+    //   break;
+    // }
+    // case '2': {
+    //   windowSize = 2048;
+    //   break;
+    // }
+    // case '3': {
+    //   windowSize = 4096;
+    //   break;
+    // }
+    // }
 
-    matplotlibcpp::show();
+    // switch (windowFunctionTypeChoice) {
+    // case '1': {
+    //   windowFunctionType = WindowFunctionType::Rectangle;
+    //   break;
+    // }
+    // case '2': {
+    //   windowFunctionType = WindowFunctionType::Hamming;
+    //   break;
+    // }
+    // case '3': {
+    //   windowFunctionType = WindowFunctionType::Hanning;
+    //   break;
+    // }
+    // }
 
-    AudioFile<double>::AudioBuffer bufferAuto;
-    AudioFile<double>::AudioBuffer bufferCep;
+    // std::cout << "Insert hop size:\n" << std::endl;
+    // std::cin >> hopSize;
 
-    bufferAuto.resize(1);
-    bufferCep.resize(1);
+    // std::cout << "Loaded window size: " << windowSize << std::endl;
+    // auto plotData =
+    //     Utility::GetSegmentedSamples(audioSource.samples[0], windowSize);
+    // std::vector<std::vector<double>> batches = plotData.segmentedPlotData;
+    // std::vector<int> mask = plotData.mask;
 
-    // 3. Set number of samples per channel
-    bufferAuto[0].resize(autocorrPitchData.size());
-    bufferCep[0].resize(cepstrumPitchData.size());
+    // std::vector<double> pitchesAutoCorrelation;
 
-    bufferAuto[0] = autocorrPitchData;
-    bufferCep[0] = cepstrumPitchData;
+    // for (const auto &batch : batches) {
 
-    AudioFile<double> autoCorrFile;
-    AudioFile<double> cepstrumFile;
+    //   std::vector<double> transformedSignal;
 
-    autoCorrFile.setAudioBuffer(bufferAuto);
-    cepstrumFile.setAudioBuffer(bufferCep);
+    //   for (int m = 1; m < batch.size(); ++m) {
+    //     double sum = 0;
+    //     for (int i = 0; i < batch.size(); ++i) {
+    //       double value = batch[i];
 
-    autoCorrFile.setBitDepth(24);
-    cepstrumFile.setBitDepth(24);
-    autoCorrFile.setSampleRate(44100);
-    cepstrumFile.setSampleRate(44100);
+    //       value *= m + i < batch.size() ? batch[m + i] : 0;
+    //       sum += value;
+    //     }
+    //     transformedSignal.push_back(sum);
+    //   }
 
-    autoCorrFile.save("./autoCorrPitch.wav", AudioFileFormat::Wave);
-    cepstrumFile.save("./cepstrumPitch.wav", AudioFileFormat::Wave);
+    //   // Utility::ShowPlot(batch, "Discrete time signal");
+    //   // Utility::ShowPlot(transformedSignal, "Autocorelation of discrete
+    //   // signal");
+
+    //   int maxIndexAutocorr = Utility::FindIndexOfMaximum(transformedSignal);
+    //   double baseFrequency =
+    //       maxIndexAutocorr == -1
+    //           ? 0
+    //           : static_cast<double>(audioSource.getSampleRate()) /
+    //                 (maxIndexAutocorr + 1);
+
+    //   // std::endl; ShowPlot(batch, "base"); ShowPlot(transformedSignal,
+    //   // "auto");
+
+    //   pitchesAutoCorrelation.push_back(baseFrequency);
+    // }
+
+    // std::vector<double> pitchDataAutocorrelation =
+    // Utility::GetBaseFreqPlotData(
+    //     audioSource, pitchesAutoCorrelation, windowSize);
+
+    // std::vector<double> pitchesCepstrum;
+
+    // for (auto batch : batches) {
+
+    //   CArray freqDomainData(windowSize);
+
+    //   // Utility::ShowPlot(batch, "Basic signal before windowing");
+    //   // okienkowanie przez funkcje Hamminga
+
+    //   Utility::ApplyWindowFunction(batch, windowFunctionType);
+
+    //   // Utility::ShowPlot(batch, "Basic signal windowed by Hamming
+    //   function");
+
+    //   for (int i = 0; i < batch.size(); ++i) {
+    //     freqDomainData[i] = batch[i];
+    //   }
+
+    //   Utility::FFT(freqDomainData);
+    //   CArray halfOfFreqData(windowSize / 2);
+
+    //   for (int i = 0; i < windowSize / 2; ++i) {
+    //     halfOfFreqData[i] = freqDomainData[i];
+    //   }
+
+    //   CArray firstSpectrum(windowSize / 2);
+    //   std::vector<double> firstSpectrumVec(windowSize / 2);
+
+    //   for (int i = 0; i < windowSize / 2; ++i) {
+    //     double val = log(sqrt(pow(halfOfFreqData[i].real(), 2) +
+    //                           pow(halfOfFreqData[i].imag(), 2)) +
+    //                      M_E);
+    //     firstSpectrum[i] = val;
+    //     firstSpectrumVec[i] = val;
+    //   }
+
+    //   // ShowPlot(firstSpectrumVec, "Freq domain - log(mag) signal");
+    //   Utility::FFT(firstSpectrum);
+
+    //   CArray halfOfFirstSpectrum(windowSize / 4);
+    //   for (int i = 0; i < windowSize / 4; ++i) {
+    //     halfOfFirstSpectrum[i] = firstSpectrum[i];
+    //   }
+
+    //   std::vector<double> secondSpectrum(windowSize / 4);
+    //   for (int i = 0; i < windowSize / 4; ++i) {
+    //     double val = val = sqrt(pow(halfOfFirstSpectrum[i].real(), 2) +
+    //                             pow(halfOfFirstSpectrum[i].imag(), 2));
+
+    //     secondSpectrum[i] = val;
+    //   }
+
+    //   int maxIndexCep = Utility::FindIndexOfMaximum(secondSpectrum);
+
+    //   double baseFrequencyCep =
+    //       maxIndexCep == -1 ? 0
+    //                         :
+    //                         static_cast<double>(audioSource.getSampleRate())
+    //                         /
+    //                               (maxIndexCep * 2);
+
+    //   pitchesCepstrum.push_back(baseFrequencyCep);
+    // }
+
+    // std::vector<double> pitchDataCepstrum =
+    //     Utility::GetBaseFreqPlotData(audioSource, pitchesCepstrum,
+    //     windowSize);
+
+    // assert(audioSource.samples[0].size() == pitchDataAutocorrelation.size());
+    // assert(audioSource.samples[0].size() == pitchDataCepstrum.size());
+
+    // for (int i = 0; i < audioSource.samples[0].size(); ++i) {
+    //   pitchDataAutocorrelation[i] *= mask[i];
+    //   pitchDataCepstrum[i] *= mask[i];
+    // }
+
+    // // Utility::ShowPlot(audioSource.samples[0], "Discrete time domain
+    // signal");
+
+    // matplotlibcpp::subplot(2, 1, 1);
+    // matplotlibcpp::title("Discrete time domain signal");
+    // matplotlibcpp::named_plot("Signal", audioSource.samples[0]);
+    // matplotlibcpp::legend();
+    // matplotlibcpp::subplot(2, 1, 2);
+    // matplotlibcpp::named_plot("Pitch detected by autocorrelation",
+    //                           pitchDataAutocorrelation);
+    // matplotlibcpp::named_plot("Pitch detected by cepstrum",
+    // pitchDataCepstrum); matplotlibcpp::title("Pitch detection comparision");
+    // matplotlibcpp::legend();
+    // matplotlibcpp::show();
+
+    // auto autocorrPitchData =
+    //     Utility::GeneratePitchSignal(audioSource, pitchDataAutocorrelation);
+    // auto cepstrumPitchData =
+    //     Utility::GeneratePitchSignal(audioSource, pitchDataCepstrum);
+
+    // matplotlibcpp::subplot(3, 1, 1);
+    // matplotlibcpp::title("Discrete time domain signal");
+    // matplotlibcpp::named_plot("Signal", audioSource.samples[0]);
+    // matplotlibcpp::legend();
+
+    // matplotlibcpp::subplot(3, 1, 2);
+    // matplotlibcpp::title("Sine wave generated from autocorrelation pitch");
+    // matplotlibcpp::named_plot("Signal", autocorrPitchData);
+    // matplotlibcpp::legend();
+
+    // matplotlibcpp::subplot(3, 1, 3);
+    // matplotlibcpp::title("Sine wave generated from cepstrum pitch");
+    // matplotlibcpp::named_plot("Signal", cepstrumPitchData);
+    // matplotlibcpp::legend();
+
+    // matplotlibcpp::show();
+
+    // AudioFile<double>::AudioBuffer bufferAuto;
+    // AudioFile<double>::AudioBuffer bufferCep;
+
+    // bufferAuto.resize(1);
+    // bufferCep.resize(1);
+
+    // // 3. Set number of samples per channel
+    // bufferAuto[0].resize(autocorrPitchData.size());
+    // bufferCep[0].resize(cepstrumPitchData.size());
+
+    // bufferAuto[0] = autocorrPitchData;
+    // bufferCep[0] = cepstrumPitchData;
+
+    // AudioFile<double> autoCorrFile;
+    // AudioFile<double> cepstrumFile;
+
+    // autoCorrFile.setAudioBuffer(bufferAuto);
+    // cepstrumFile.setAudioBuffer(bufferCep);
+
+    // autoCorrFile.setBitDepth(24);
+    // cepstrumFile.setBitDepth(24);
+    // autoCorrFile.setSampleRate(44100);
+    // cepstrumFile.setSampleRate(44100);
+
+    // autoCorrFile.save("./autoCorrPitch.wav", AudioFileFormat::Wave);
+    // cepstrumFile.save("./cepstrumPitch.wav", AudioFileFormat::Wave);
     break;
   }
   case 'l':
