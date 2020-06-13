@@ -120,8 +120,20 @@ bool Utility::LoadSound(std::string& aFileName, AudioFile<double>& aSoundToUpdat
   std::cin >> aFileName;
 
   std::string filePath;
-  filePath.append(RESOURCES_DIR);
-  filePath.append(aFileName);
+  if (aFileName == "1")
+  {
+    filePath.append(RESOURCES_DIR);
+    filePath.append("lin.wav");
+  }
+  else if (aFileName == "2")
+  {
+    filePath.append(RESOURCES_DIR);
+    filePath.append("log.wav");
+  }
+  else
+  {
+    return false;
+  }
 
   return aSoundToUpdate.load(filePath);
 }

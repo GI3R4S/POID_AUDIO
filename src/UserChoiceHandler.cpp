@@ -41,8 +41,10 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
 
     char windowSizeChoice;
     char windowFunctionTypeChoice;
-    int windowSize = 0;
-    int hopSize = 0;
+    int windowSize = 2049;
+    int hopSize = 1028;
+    int filterLength = 399;
+    int cutoff_freq = 500;
     WindowFunctionType windowFunctionType;
     const std::vector<char> kPossibleChoices{'1', '2', '3'};
 
@@ -52,17 +54,15 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
       signal.push_back(1);
     }
 
-    auto batchesWithHops = Utility::GetSegmentedSignal(audioSource.samples[0], 33, 16);
-    // auto batchesWithHops = Utility::GetSegmentedSignal(signal, 2049, 1024);
+    auto batchesWithHops =
+      Utility::GetSegmentedSignal(audioSource.samples[0], windowSize, hopSize);
 
-    for (auto& batch : batchesWithHops)
-    {
-      Utility::ApplyWindowFunction(batch, WindowFunctionType::Hamming);
-    }
+    // for (auto& batch : batchesWithHops)
+    // {
+    //   Utility::ApplyWindowFunction(batch, WindowFunctionType::Hamming);
+    // }
 
-    int filterLength = 21;
-    int cutoff_freq = 3000;
-
+    // obliczenie coefficentów
     std::vector<double> coefficients;
     for (int i = 0; i < filterLength; ++i)
     {
@@ -79,7 +79,23 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
       }
     }
 
-    for (int i = 0; batchesWithHops.size(); ++i)
+    // zastosowanie na nich okna
+    auto coeffCopy = coefficients;
+    Utility::ApplyWindowFunction(coefficients, WindowFunctionType::Hamming);
+
+    // matplotlibcpp::subplot(2, 1, 1);
+    // matplotlibcpp::title("Plots");
+    // matplotlibcpp::named_plot("Coeff Before", coeffCopy);
+    // matplotlibcpp::legend();
+    // matplotlibcpp::subplot(2, 1, 2);
+    // matplotlibcpp::named_plot("Coeff After", coefficients);
+    // matplotlibcpp::legend();
+    // matplotlibcpp::show();
+
+    auto batchesWithHopsCopy = batchesWithHops;
+
+    // Uzupełnianie zerami do rozwiązania w dziedzinie czasu
+    for (int i = 0; i < batchesWithHops.size(); ++i)
     {
       std::vector<double> tmp;
 
@@ -88,7 +104,9 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
         tmp.push_back(0);
       }
 
-      tmp.insert(tmp.end(), batchesWithHops[i].begin(), batchesWithHops[i].end());
+      auto tmp2 = batchesWithHops[i];
+
+      tmp.insert(tmp.end(), tmp2.begin(), tmp2.end());
 
       for (int j = 0; j < filterLength - 1; ++j)
       {
@@ -98,9 +116,10 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
       batchesWithHops[i] = tmp;
     }
 
+    // Nakładanie filtra w dziedzinie czasu
     std::vector<std::vector<double>> timeDomainOutput;
 
-    for (int i = 0; batchesWithHops.size(); ++i)
+    for (int i = 0; i < batchesWithHops.size(); ++i)
     {
       timeDomainOutput.push_back(std::vector<double>());
 
@@ -115,16 +134,127 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
       }
     }
 
-    for (auto coeff : coefficients)
+    // Mergowanie nachodzących okien
+    std::vector<double> mergedTimeDomainSignal(audioSource.samples[0].size(), 0);
+
+    for (int i = 0; i < timeDomainOutput.size(); ++i)
     {
-      std::cout << coeff << std::endl;
+      if (i == 0)
+      {
+        for (int j = 0; j < timeDomainOutput[i].size(); ++j)
+        {
+          mergedTimeDomainSignal[j] += timeDomainOutput[i][j];
+        }
+      }
+      else
+      {
+        for (int j = 0; j < timeDomainOutput[i].size(); ++j)
+        {
+          if (i * hopSize + j >= audioSource.samples[0].size())
+          {
+            break;
+          }
+          mergedTimeDomainSignal[i * hopSize + j] += timeDomainOutput[i][j];
+        }
+      }
     }
 
-    std::vector<double> plotData;
-    matplotlibcpp::named_plot("Data", batchesWithHops[0]);
+    // matplotlibcpp::subplot(2, 1, 1);
+    // matplotlibcpp::title("Plots");
+    // matplotlibcpp::named_plot("Before", audioSource.samples[0]);
+    // matplotlibcpp::legend();
+    // matplotlibcpp::subplot(2, 1, 2);
+    // matplotlibcpp::named_plot("After", mergedTimeDomainSignal);
+    // matplotlibcpp::legend();
+    // matplotlibcpp::show();
+
+    // UZUPEŁNIANIE ZERAMI DO FFT
+
+    auto batchesWithHopsWithAddedZeros = batchesWithHopsCopy;
+    auto coefficientsWithAddedZeros = coeffCopy;
+
+    int desiredSize = filterLength + windowSize - 1;
+
+    std::cout << "DUPA1" << std::endl;
+    while (coefficientsWithAddedZeros.size() != desiredSize)
+    {
+      coefficientsWithAddedZeros.push_back(0);
+    }
+    std::cout << "DUPA2" << std::endl;
+    for (auto& batch : batchesWithHopsWithAddedZeros)
+    {
+      while (batch.size() != desiredSize)
+      {
+        batch.push_back(0);
+      }
+      assert(coefficientsWithAddedZeros.size() == batch.size());
+    }
+    std::cout << "DUPA3" << std::endl;
+    CArray coefficientsFFT(coefficientsWithAddedZeros.size());
+    std::vector<CArray> batchesFFT(batchesWithHopsWithAddedZeros.size(),
+                                   CArray(coefficientsWithAddedZeros.size()));
+
+    for (int i = 0; i < coefficientsWithAddedZeros.size(); ++i)
+    {
+      coefficientsFFT[i] = coefficientsWithAddedZeros[i];
+    }
+
+    std::cout << "DUPA4" << std::endl;
+    Utility::FFT(coefficientsFFT);
+    std::cout << "DUPA5" << std::endl;
+    for (int i = 0; i < batchesFFT.size(); ++i)
+    {
+      for (int j = 0; j < batchesFFT[i].size(); ++j)
+      {
+        batchesFFT[i][j] = batchesWithHopsWithAddedZeros[i][j];
+      }
+      Utility::FFT(batchesFFT[i]);
+      batchesFFT[i] = batchesFFT[i] * coefficientsFFT;
+    }
+
+    for (auto& batch : batchesFFT)
+    {
+      Utility::IFFT(batch);
+    }
+
+    std::vector<double> freqDomainResult(audioSource.samples[0].size());
+
+    for (int i = 0; i < batchesFFT.size(); ++i)
+    {
+      if (i == 0)
+      {
+        for (int j = 0; j < batchesFFT[i].size(); ++j)
+        {
+          freqDomainResult[j] += batchesFFT[i][j].real();
+        }
+      }
+      else
+      {
+        for (int j = 0; j < batchesFFT[i].size(); ++j)
+        {
+          if (i * hopSize + j >= audioSource.samples[0].size())
+          {
+            break;
+          }
+          freqDomainResult[i * hopSize + j] += batchesFFT[i][j].real();
+        }
+      }
+    }
+
+    matplotlibcpp::subplot(2, 1, 1);
+    matplotlibcpp::title("Plots");
+    matplotlibcpp::named_plot("Before", audioSource.samples[0]);
+    matplotlibcpp::legend();
+    matplotlibcpp::subplot(2, 1, 2);
+    matplotlibcpp::named_plot("After", freqDomainResult);
+    matplotlibcpp::legend();
     matplotlibcpp::show();
 
-    // std::cout << "DUPA" << std::endl;
+    std::cout << "DUPA6" << std::endl;
+
+    // std::vector<double> plotData;
+    // matplotlibcpp::named_plot("Data", batchesWithHops[0]);
+    // matplotlibcpp::show();
 
     // do {
     //   std::cout
