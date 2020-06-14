@@ -10,12 +10,6 @@
 namespace POID_DGMK
 {
 
-struct PlotData
-{
-  std::vector<std::vector<double>> segmentedPlotData;
-  std::vector<int> mask;
-};
-
 enum class WindowFunctionType
 {
   Rectangle,
