@@ -325,19 +325,27 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
     // Freq domain result - end
     ///////////////////////////////////////////////////////////////////////////
 
-    std::cout << "Time domain duration: "
-              << std::chrono::duration_cast<std::chrono::milliseconds>(timeDomainEnd - timeDomainStart)
-                   .count()
-              << " ms" << std::endl;
+    std::stringstream timeDomainDurationString;
+    timeDomainDurationString
+      << "Time domain duration: "
+      << std::chrono::duration_cast<std::chrono::milliseconds>(timeDomainEnd - timeDomainStart)
+           .count()
+      << " ms\n";
 
-    std::cout << "Freq domain duration: "
-              << std::chrono::duration_cast<std::chrono::milliseconds>(freqDomainEnd - freqDomainStart)
-                   .count()
-              << " ms" << std::endl;
+    std::stringstream freqDomainDurationString;
+    timeDomainDurationString
+      << "Freq domain duration: "
+      << std::chrono::duration_cast<std::chrono::milliseconds>(freqDomainEnd - freqDomainStart)
+           .count()
+      << " ms\n";
 
     // plotting - start
-    matplotlibcpp::title("Results");
+    std::cout << timeDomainDurationString.str() + freqDomainDurationString.str()
+              << std::endl;
+
     matplotlibcpp::subplot(6, 1, 1);
+    matplotlibcpp::title(timeDomainDurationString.str() +
+                         freqDomainDurationString.str());
     matplotlibcpp::named_plot("Basic signal", audioSource.samples[0]);
     matplotlibcpp::legend();
     matplotlibcpp::subplot(6, 1, 2);
@@ -359,6 +367,9 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
     matplotlibcpp::legend();
     matplotlibcpp::show();
     // plotting - end
+
+    Utility::SaveSignalToFile("time", timeDomainResult);
+    Utility::SaveSignalToFile("freq", freqDomainResult);
 
     break;
   }

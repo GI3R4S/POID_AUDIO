@@ -41,82 +41,10 @@ void Utility::IFFT(CArray& x)
   x /= x.size();
 }
 
-std::vector<double> Utility::GetBaseFreqPlotData(const AudioFile<double>& aAudioSource,
-                                                 const std::vector<double>& aPitches,
-                                                 int aWindowSize)
-{
-
-  constexpr double kEpsilon = 5;
-
-  const double kMin = *std::min(aPitches.begin(), aPitches.end());
-  const double kMax = *std::max(aPitches.begin(), aPitches.end());
-  const double kAvg =
-    std::accumulate(aPitches.begin(), aPitches.end(), 0) / aPitches.size();
-
-  std::vector<std::vector<double>> pitchesGroups;
-  std::vector<double> pitchesGroup;
-
-  for (int i = 0; i < aPitches.size(); ++i)
-  {
-    if (pitchesGroup.empty())
-    {
-      pitchesGroup.push_back(aPitches[i]);
-    }
-    else
-    {
-      auto tmpVec = pitchesGroup;
-      tmpVec.push_back(aPitches[i]);
-      auto min = *std::min_element(tmpVec.begin(), tmpVec.end());
-      auto max = *std::max_element(tmpVec.begin(), tmpVec.end());
-      if (max - min <= kEpsilon)
-      {
-        pitchesGroup.push_back(aPitches[i]);
-      }
-      else
-      {
-        pitchesGroups.push_back(pitchesGroup);
-        pitchesGroup.clear();
-        pitchesGroup.push_back(aPitches[i]);
-      }
-    }
-  }
-  if (!pitchesGroup.empty())
-  {
-    pitchesGroups.push_back(pitchesGroup);
-  }
-
-  std::vector<double> pitchData;
-
-  auto lastGroupSize = aAudioSource.samples[0].size() % aWindowSize;
-
-  for (int i = 0; i < pitchesGroups.size(); ++i)
-  {
-    const auto avg =
-      std::accumulate(pitchesGroups[i].begin(), pitchesGroups[i].end(), 0) /
-      pitchesGroups[i].size();
-    auto groupSize = 0;
-
-    if (i == pitchesGroups.size() - 1)
-    {
-      groupSize = (pitchesGroups[i].size() - 1) * aWindowSize + lastGroupSize;
-    }
-    else
-    {
-      groupSize = pitchesGroups[i].size() * aWindowSize;
-    }
-
-    for (int j = 0; j < groupSize; ++j)
-    {
-      pitchData.push_back(avg);
-    }
-  }
-
-  return pitchData;
-}
-
 bool Utility::LoadSound(std::string& aFileName, AudioFile<double>& aSoundToUpdate)
 {
-  std::cout << "Insert '1' for 'lin.wav', '2' for 'log.wav': \n";
+  std::cout << "Insert '1' for 'lin.wav', '2' for 'log.wav', , '3' for "
+               "'piano.wav', '4' for 'violin.wav': \n";
   std::cin >> aFileName;
 
   std::string filePath;
@@ -129,6 +57,16 @@ bool Utility::LoadSound(std::string& aFileName, AudioFile<double>& aSoundToUpdat
   {
     filePath.append(RESOURCES_DIR);
     filePath.append("log.wav");
+  }
+  else if (aFileName == "3")
+  {
+    filePath.append(RESOURCES_DIR);
+    filePath.append("piano.wav");
+  }
+  else if (aFileName == "4")
+  {
+    filePath.append(RESOURCES_DIR);
+    filePath.append("violin.wav");
   }
   else
   {
@@ -146,154 +84,22 @@ void Utility::LoadSoundUntilSuccessful(std::string& aFileName, AudioFile<double>
   }
 }
 
-void Utility::ShowPlot(const std::vector<double>& aData, const std::string& aName)
+void Utility::SaveSignalToFile(std::string aFileName, const std::vector<double>& aData)
 {
-  plt::plot(aData);
-  plt::title(aName);
-  plt::show();
-}
+  AudioFile<double>::AudioBuffer buffer;
+  buffer.resize(1);
 
-PlotData Utility::GetSegmentedSamples(const std::vector<double>& aSamples, int aWindowSize)
-{
+  buffer[0].resize(aData.size());
+  buffer[0] = aData;
 
-  std::vector<double> samplesCopy(aSamples.begin(), aSamples.end());
+  AudioFile<double> bufferFile;
 
-  double average = 0;
-  for (int i = 0; i < samplesCopy.size(); ++i)
-  {
-    average += std::abs(samplesCopy[i]);
-  }
+  bufferFile.setAudioBuffer(buffer);
 
-  average /= samplesCopy.size();
-  average *= 1.5;
+  bufferFile.setBitDepth(24);
+  bufferFile.setSampleRate(44100);
 
-  std::cout << "average: " << average << std::endl;
-  std::vector<int> mask;
-  std::vector<std::vector<double>> batches;
-
-  int numberOfFullBatches = aSamples.size() / aWindowSize;
-  int numberpOfSamplesInLastBatch = aSamples.size() % aWindowSize;
-
-  bool wasPreviousPowerNotSufficent = false;
-
-  for (int i = 1; i <= numberOfFullBatches; ++i)
-  {
-    std::vector<double> batch;
-    for (int j = (i - 1) * aWindowSize; j < i * aWindowSize; ++j)
-    {
-      batch.push_back(aSamples[j]);
-    }
-
-    bool isMinimalValueNotExceeded =
-      *std::max_element(
-        batch.begin(),
-        batch.end())<average&& * std::min_element(batch.begin(), batch.end())> -
-      1 * average;
-
-    int valToInsert = isMinimalValueNotExceeded || wasPreviousPowerNotSufficent ? 0 : 1;
-
-    wasPreviousPowerNotSufficent = isMinimalValueNotExceeded;
-
-    for (int j = 0; j < batch.size(); ++j)
-    {
-      mask.push_back(valToInsert);
-    }
-
-    batches.push_back(batch);
-  }
-
-  std::vector<double> lastBatch;
-  for (int i = numberOfFullBatches * aWindowSize;
-       i < numberOfFullBatches * aWindowSize + numberpOfSamplesInLastBatch; ++i)
-  {
-    lastBatch.push_back(aSamples[i]);
-  }
-
-  bool isMinimalValueNotExceeded =
-    *std::max_element(
-      lastBatch.begin(),
-      lastBatch.end())<average&& * std::min_element(lastBatch.begin(), lastBatch.end())> -
-    1 * average;
-
-  int valToInsert = isMinimalValueNotExceeded ? 0 : 1;
-
-  for (int j = 0; j < lastBatch.size(); ++j)
-  {
-    mask.push_back(valToInsert);
-  }
-
-  batches.push_back(lastBatch);
-
-  PlotData toReturn;
-  toReturn.segmentedPlotData = batches;
-  toReturn.mask = mask;
-
-  return toReturn;
-}
-
-std::vector<double> Utility::GeneratePitchSignal(const AudioFile<double>& aSource,
-                                                 const std::vector<double>& aPitchData)
-{
-  assert(aPitchData.size() > 1);
-  std::vector<double> pitchSignal;
-
-  double prevPitchValue = std::numeric_limits<double>::lowest();
-  int numberOfSamplesPerPeriod = 0;
-  for (int i = 0; i < aPitchData.size(); ++i)
-  {
-    if (prevPitchValue != aPitchData[i])
-    {
-      prevPitchValue = aPitchData[i];
-      numberOfSamplesPerPeriod = aSource.getSampleRate() / aPitchData[i];
-    }
-
-    if (aPitchData[i] != 0)
-    {
-      int modulo = i % numberOfSamplesPerPeriod;
-      double factor = 1.0 * modulo / numberOfSamplesPerPeriod;
-      double arg = (2 * M_PI) * factor;
-      double sinVal = sin(arg);
-      pitchSignal.push_back(sinVal);
-    }
-    else
-    {
-      pitchSignal.push_back(0);
-    }
-  }
-
-  return pitchSignal;
-}
-
-int Utility::FindIndexOfMaximum(const std::vector<double> aData)
-{
-  std::vector<double> reducedVector;
-  bool isIncreaseReached = false;
-  int i = 0;
-  for (; i < aData.size(); ++i)
-  {
-    if (aData[i + 1] > aData[i])
-    {
-      isIncreaseReached = true;
-    }
-
-    if (isIncreaseReached)
-    {
-      reducedVector.push_back(aData[i]);
-    }
-  }
-
-  if (!reducedVector.empty())
-  {
-    auto maxElement = std::max_element(reducedVector.begin(), reducedVector.end());
-    auto maxIndex =
-      (aData.size() - reducedVector.size()) + (maxElement - reducedVector.begin());
-
-    return maxIndex;
-  }
-  else
-  {
-    return -1;
-  }
+  bufferFile.save("./" + aFileName + ".wav", AudioFileFormat::Wave);
 }
 
 void Utility::ApplyWindowFunction(std::vector<double>& aData, WindowFunctionType aWindowFunctionType)
@@ -350,11 +156,8 @@ std::vector<std::vector<double>> Utility::GetSegmentedSignal(const std::vector<d
 
   for (int m = 0; m <= numberOfHops; ++m)
   {
-    std::cout << "=======================================" << std::endl;
     int firstIndexOfBatch = m * aHopSize;
     int maxIndexOfBatch = m * aHopSize + aWindowSize;
-    std::cout << "First index: " << firstIndexOfBatch << std::endl;
-    std::cout << "Max index: " << maxIndexOfBatch << std::endl;
 
     std::vector<double> batch;
 
@@ -369,7 +172,6 @@ std::vector<std::vector<double>> Utility::GetSegmentedSignal(const std::vector<d
       {
         batch.push_back(0);
       }
-      std::cout << "Ups, requires filling: " << std::endl;
     }
     else
     {
@@ -378,8 +180,6 @@ std::vector<std::vector<double>> Utility::GetSegmentedSignal(const std::vector<d
         batch.push_back(aSamples[i]);
       }
     }
-    std::cout << "Batch size: " << batch.size() << std::endl;
-    std::cout << "=======================================" << std::endl;
     batches.push_back(batch);
   }
 

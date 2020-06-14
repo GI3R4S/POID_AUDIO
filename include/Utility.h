@@ -7,52 +7,44 @@
 #include <valarray>
 #include <vector>
 
-namespace POID_DGMK {
+namespace POID_DGMK
+{
 
-struct PlotData {
+struct PlotData
+{
   std::vector<std::vector<double>> segmentedPlotData;
   std::vector<int> mask;
 };
 
-enum class WindowFunctionType { Rectangle, Hamming, Hanning };
+enum class WindowFunctionType
+{
+  Rectangle,
+  Hamming,
+  Hanning
+};
 
-class Utility {
+class Utility
+{
 public:
-  static void ShowPlot(const std::vector<double> &aData,
-                       const std::string &aName);
+  static std::vector<std::vector<double>> GetSegmentedSignal(const std::vector<double>& aSamples,
+                                                             int aWindowSize,
+                                                             int aHopSize);
 
-  static PlotData GetSegmentedSamples(const std::vector<double> &aSamples,
-                                      int aWindowSize);
+  static bool LoadSound(std::string& aFileName, AudioFile<double>& aSoundToUpdate);
 
-  static std::vector<std::vector<double>>
-  GetSegmentedSignal(const std::vector<double> &aSamples, int aWindowSize,
-                     int aHopSize);
+  static void LoadSoundUntilSuccessful(std::string& aFileName, AudioFile<double>& aSoundToUpdate);
 
-  static bool LoadSound(std::string &aFileName,
-                        AudioFile<double> &aSoundToUpdate);
+  static void SaveSignalToFile(const std::string aFileName, const std::vector<double>& aData);
 
-  static void LoadSoundUntilSuccessful(std::string &aFileName,
-                                       AudioFile<double> &aSoundToUpdate);
-
-  static std::vector<double>
-  GetBaseFreqPlotData(const AudioFile<double> &aAudioSource,
-                      const std::vector<double> &aPitches, int aWindowSize);
-
-  static int FindIndexOfMaximum(const std::vector<double> aData);
-
-  static std::vector<double>
-  GeneratePitchSignal(const AudioFile<double> &aSource,
-                      const std::vector<double> &aPitchData);
-
-  static void ApplyWindowFunction(std::vector<double> &aData,
+  static void ApplyWindowFunction(std::vector<double>& aData,
                                   WindowFunctionType aWindowFunctionType);
 
   using TComplex = std::complex<double>;
   using CArray = std::valarray<TComplex>;
   using TComplexRepresentation = std::vector<CArray>;
 
-  static void FFT(CArray &x);
-  static void IFFT(CArray &x);
+  static void FFT(CArray& x);
+  static void IFFT(CArray& x);
 };
 
 } // namespace POID_DGMK
