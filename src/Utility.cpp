@@ -116,7 +116,7 @@ std::vector<double> Utility::GetBaseFreqPlotData(const AudioFile<double>& aAudio
 
 bool Utility::LoadSound(std::string& aFileName, AudioFile<double>& aSoundToUpdate)
 {
-  std::cout << "Insert file name from directory 'resources': \n";
+  std::cout << "Insert '1' for 'lin.wav', '2' for 'log.wav': \n";
   std::cin >> aFileName;
 
   std::string filePath;

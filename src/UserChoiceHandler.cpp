@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <assert.h>
+#include <chrono>
 #include <complex>
 #include <valarray>
 #include <vector>
@@ -18,8 +19,7 @@ namespace POID_DGMK
 void UserChoiceHandler::ViewMenu()
 {
   std::cout << "==============================================\n"
-            << "[1] Compare pitch detection between autocorelation and "
-               "cepstrum analysis\n"
+            << "[1] Compare time and frequency domain low pass filter\n"
             << "[L] Load another file\n"
             << "[S] Save modified sound\n"
             << "[V] Display sample info\n"
@@ -37,32 +37,76 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
   {
   case '1':
   {
+    // configuration variables - start
     auto& audioSource = aBaseSound;
-
-    char windowSizeChoice;
     char windowFunctionTypeChoice;
-    int windowSize = 2049;
-    int hopSize = 1028;
-    int filterLength = 399;
-    int cutoff_freq = 500;
+    int windowSize = 0;
+    int hopSize = 0;
+    bool isCasuative = 0;
+    int filterLength = 0;
+    int cutoff_freq = 0;
+    int nValue = 0;
     WindowFunctionType windowFunctionType;
+    // configuration variables - end
+
+    // input of params - start
+    std::cout << "\nInsert size of window: \n";
+    std::cin >> windowSize;
+
     const std::vector<char> kPossibleChoices{'1', '2', '3'};
 
-    std::vector<double> signal;
-    for (int i = 0; i < 44100; ++i)
+    do
     {
-      signal.push_back(1);
+      std::cout << "\nSelect window type:\n'1': Rectangle\n'2': Hamming\n'3': "
+                   "Hanning\n";
+      std::cin >> windowFunctionTypeChoice;
+    } while (std::find(kPossibleChoices.begin(), kPossibleChoices.end(),
+                       windowFunctionTypeChoice) == kPossibleChoices.end());
+
+    switch (windowFunctionTypeChoice)
+    {
+    case '1':
+    {
+      windowFunctionType = WindowFunctionType::Rectangle;
+      break;
+    }
+    case '2':
+    {
+      windowFunctionType = WindowFunctionType::Hamming;
+      break;
+    }
+    case '3':
+    {
+      windowFunctionType = WindowFunctionType::Hanning;
+      break;
+    }
     }
 
-    auto batchesWithHops =
+    std::cout << "Insert size of hop: \n";
+    std::cin >> hopSize;
+
+    std::cout << "Insert number of coefficients - should be odd number: \n";
+    std::cin >> filterLength;
+
+    std::cout << "Insert border frequency value for lowpass filter - should be "
+                 "between 1 - 1000: \n";
+    std::cin >> cutoff_freq;
+
+    std::cout << "Insert value of N - should be greater than window size - 0 "
+                 "for default value: \n";
+    std::cin >> nValue;
+
+    std::cout
+      << "Is window casuative ? Type 0 if no, any other number otherwise: \n";
+    std::cin >> isCasuative;
+
+    // input of params - end
+
+    // segmentation of signal - common for both variants
+    auto segments =
       Utility::GetSegmentedSignal(audioSource.samples[0], windowSize, hopSize);
 
-    // for (auto& batch : batchesWithHops)
-    // {
-    //   Utility::ApplyWindowFunction(batch, WindowFunctionType::Hamming);
-    // }
-
-    // obliczenie coefficentów
+    // computation of coefficients - start
     std::vector<double> coefficients;
     for (int i = 0; i < filterLength; ++i)
     {
@@ -78,24 +122,23 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
         coefficients.push_back(value);
       }
     }
+    // computation of coefficients - end
 
-    // zastosowanie na nich okna
-    auto coeffCopy = coefficients;
-    Utility::ApplyWindowFunction(coefficients, WindowFunctionType::Hamming);
+    // applying window function on coefficients
+    auto coefficientsBeforeWindowing = coefficients;
+    Utility::ApplyWindowFunction(coefficients, windowFunctionType);
+    auto coefficientsAfterWindowing = coefficients;
 
-    // matplotlibcpp::subplot(2, 1, 1);
-    // matplotlibcpp::title("Plots");
-    // matplotlibcpp::named_plot("Coeff Before", coeffCopy);
-    // matplotlibcpp::legend();
-    // matplotlibcpp::subplot(2, 1, 2);
-    // matplotlibcpp::named_plot("Coeff After", coefficients);
-    // matplotlibcpp::legend();
-    // matplotlibcpp::show();
+    auto segmentedSignalTimeDomain = segments;
+    auto segmentedSignalFreqDomain = segments;
 
-    auto batchesWithHopsCopy = batchesWithHops;
+    ////////////////////////////////////////////////////////////////////////////
+    // Time domain solution - start
+    auto timeDomainStart = std::chrono::steady_clock::now();
+    auto segmentsCopy = segments;
 
-    // Uzupełnianie zerami do rozwiązania w dziedzinie czasu
-    for (int i = 0; i < batchesWithHops.size(); ++i)
+    // Adding zeroes at head and tail of segments to meet formula requirements - start
+    for (int i = 0; i < segmentedSignalTimeDomain.size(); ++i)
     {
       std::vector<double> tmp;
 
@@ -104,7 +147,7 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
         tmp.push_back(0);
       }
 
-      auto tmp2 = batchesWithHops[i];
+      auto tmp2 = segmentedSignalTimeDomain[i];
 
       tmp.insert(tmp.end(), tmp2.begin(), tmp2.end());
 
@@ -112,30 +155,31 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
       {
         tmp.push_back(0);
       }
-
-      batchesWithHops[i] = tmp;
+      segmentedSignalTimeDomain[i] = tmp;
     }
+    // Adding zeroes at head and tail of segments to meet formula requirements - end
 
-    // Nakładanie filtra w dziedzinie czasu
+    // Applying filter made of coefficients to windowed signal - start
     std::vector<std::vector<double>> timeDomainOutput;
 
-    for (int i = 0; i < batchesWithHops.size(); ++i)
+    for (int i = 0; i < segmentedSignalTimeDomain.size(); ++i)
     {
       timeDomainOutput.push_back(std::vector<double>());
 
-      for (int j = filterLength; j < batchesWithHops[i].size() - filterLength; ++j)
+      for (int j = filterLength; j < segmentedSignalTimeDomain[i].size() - filterLength; ++j)
       {
         double sum = 0;
         for (int k = 0; k < filterLength; ++k)
         {
-          sum += batchesWithHops[i][j - k] * coefficients[k];
+          sum += segmentedSignalTimeDomain[i][j - k] * coefficients[k];
         }
         timeDomainOutput[i].push_back(sum);
       }
     }
+    // Applying filter made of coefficients to windowed signal - end
 
-    // Mergowanie nachodzących okien
-    std::vector<double> mergedTimeDomainSignal(audioSource.samples[0].size(), 0);
+    // Merging modified segments, addition of values on connetction - start
+    std::vector<double> timeDomainResult(audioSource.samples[0].size(), 0);
 
     for (int i = 0; i < timeDomainOutput.size(); ++i)
     {
@@ -143,7 +187,7 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
       {
         for (int j = 0; j < timeDomainOutput[i].size(); ++j)
         {
-          mergedTimeDomainSignal[j] += timeDomainOutput[i][j];
+          timeDomainResult[j] += timeDomainOutput[i][j];
         }
       }
       else
@@ -154,34 +198,66 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
           {
             break;
           }
-          mergedTimeDomainSignal[i * hopSize + j] += timeDomainOutput[i][j];
+          timeDomainResult[i * hopSize + j] += timeDomainOutput[i][j];
         }
       }
     }
+    // Merging modified segments, addition of values on connetction - end
 
-    // matplotlibcpp::subplot(2, 1, 1);
-    // matplotlibcpp::title("Plots");
-    // matplotlibcpp::named_plot("Before", audioSource.samples[0]);
-    // matplotlibcpp::legend();
-    // matplotlibcpp::subplot(2, 1, 2);
-    // matplotlibcpp::named_plot("After", mergedTimeDomainSignal);
-    // matplotlibcpp::legend();
-    // matplotlibcpp::show();
+    auto timeDomainEnd = std::chrono::steady_clock::now();
+    // Time domain solution - end
+    ///////////////////////////////////////////////////////////////////////////////
 
-    // UZUPEŁNIANIE ZERAMI DO FFT
+    ///////////////////////////////////////////////////////////////////////////////
+    // Freq domain solution - start
+    auto freqDomainStart = std::chrono::steady_clock::now();
+    auto coefficientsWithAddedZeros = coefficientsAfterWindowing;
 
-    auto batchesWithHopsWithAddedZeros = batchesWithHopsCopy;
-    auto coefficientsWithAddedZeros = coeffCopy;
+    int desiredSize = nValue == 0 ? filterLength + windowSize - 1 : nValue;
 
-    int desiredSize = filterLength + windowSize - 1;
-
-    std::cout << "DUPA1" << std::endl;
-    while (coefficientsWithAddedZeros.size() != desiredSize)
+    // Adding zeroes to coefficients - start
+    if (isCasuative)
     {
-      coefficientsWithAddedZeros.push_back(0);
+      while (coefficientsWithAddedZeros.size() != desiredSize)
+      {
+        coefficientsWithAddedZeros.push_back(0);
+      }
     }
-    std::cout << "DUPA2" << std::endl;
-    for (auto& batch : batchesWithHopsWithAddedZeros)
+    else
+    {
+      std::vector<double> firstHalf;
+      std::vector<double> secondHalf;
+      std::vector<double> zeroes;
+
+      for (int i = 0; i < coefficientsWithAddedZeros.size(); ++i)
+      {
+        if (i < coefficientsWithAddedZeros.size() / 2.0)
+        {
+          secondHalf.push_back(coefficientsWithAddedZeros[i]);
+        }
+        else
+        {
+          firstHalf.push_back(coefficientsWithAddedZeros[i]);
+        }
+      }
+
+      for (int i = 0; i < desiredSize - firstHalf.size() - secondHalf.size(); ++i)
+      {
+        zeroes.push_back(0);
+      }
+      coefficientsWithAddedZeros.clear();
+      coefficientsWithAddedZeros.insert(coefficientsWithAddedZeros.end(),
+                                        firstHalf.begin(), firstHalf.end());
+      coefficientsWithAddedZeros.insert(coefficientsWithAddedZeros.end(),
+                                        zeroes.begin(), zeroes.end());
+      coefficientsWithAddedZeros.insert(coefficientsWithAddedZeros.end(),
+                                        secondHalf.begin(), secondHalf.end());
+    }
+
+    // Adding zeroes to coefficients - end
+
+    // Adding zeroes to segments - start
+    for (auto& batch : segmentedSignalFreqDomain)
     {
       while (batch.size() != desiredSize)
       {
@@ -189,304 +265,101 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
       }
       assert(coefficientsWithAddedZeros.size() == batch.size());
     }
-    std::cout << "DUPA3" << std::endl;
+    // Adding zeroes to segments - end
+
+    // Performing FFT transforms, multiplication of batches and coefficiennts- start
     CArray coefficientsFFT(coefficientsWithAddedZeros.size());
-    std::vector<CArray> batchesFFT(batchesWithHopsWithAddedZeros.size(),
-                                   CArray(coefficientsWithAddedZeros.size()));
+    std::vector<CArray> segmentsFFT(segmentedSignalFreqDomain.size(),
+                                    CArray(coefficientsWithAddedZeros.size()));
 
     for (int i = 0; i < coefficientsWithAddedZeros.size(); ++i)
     {
       coefficientsFFT[i] = coefficientsWithAddedZeros[i];
     }
 
-    std::cout << "DUPA4" << std::endl;
     Utility::FFT(coefficientsFFT);
-    std::cout << "DUPA5" << std::endl;
-    for (int i = 0; i < batchesFFT.size(); ++i)
+    for (int i = 0; i < segmentsFFT.size(); ++i)
     {
-      for (int j = 0; j < batchesFFT[i].size(); ++j)
+      for (int j = 0; j < segmentsFFT[i].size(); ++j)
       {
-        batchesFFT[i][j] = batchesWithHopsWithAddedZeros[i][j];
+        segmentsFFT[i][j] = segmentedSignalFreqDomain[i][j];
       }
-      Utility::FFT(batchesFFT[i]);
-      batchesFFT[i] = batchesFFT[i] * coefficientsFFT;
+      Utility::FFT(segmentsFFT[i]);
+      segmentsFFT[i] = segmentsFFT[i] * coefficientsFFT;
     }
+    // Performing FFT transforms, multiplication of batches and coefficiennts- end
 
-    for (auto& batch : batchesFFT)
+    // Performing IFFT transform to get result - start
+    for (auto& batch : segmentsFFT)
     {
       Utility::IFFT(batch);
     }
+    // Performing IFFT transform to get result - end
 
+    // Retrieving result - merging segments - start
     std::vector<double> freqDomainResult(audioSource.samples[0].size());
-
-    for (int i = 0; i < batchesFFT.size(); ++i)
+    for (int i = 0; i < segmentsFFT.size(); ++i)
     {
       if (i == 0)
       {
-        for (int j = 0; j < batchesFFT[i].size(); ++j)
+        for (int j = 0; j < segmentsFFT[i].size(); ++j)
         {
-          freqDomainResult[j] += batchesFFT[i][j].real();
+          freqDomainResult[j] += segmentsFFT[i][j].real();
         }
       }
       else
       {
-        for (int j = 0; j < batchesFFT[i].size(); ++j)
+        for (int j = 0; j < segmentsFFT[i].size(); ++j)
         {
           if (i * hopSize + j >= audioSource.samples[0].size())
           {
             break;
           }
-          freqDomainResult[i * hopSize + j] += batchesFFT[i][j].real();
+          freqDomainResult[i * hopSize + j] += segmentsFFT[i][j].real();
         }
       }
     }
+    // Retrieving result - merging segments - end
 
-    matplotlibcpp::subplot(2, 1, 1);
-    matplotlibcpp::title("Plots");
-    matplotlibcpp::named_plot("Before", audioSource.samples[0]);
+    auto freqDomainEnd = std::chrono::steady_clock::now();
+    // Freq domain result - end
+    ///////////////////////////////////////////////////////////////////////////
+
+    std::cout << "Time domain duration: "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(timeDomainEnd - timeDomainStart)
+                   .count()
+              << " ms" << std::endl;
+
+    std::cout << "Freq domain duration: "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(freqDomainEnd - freqDomainStart)
+                   .count()
+              << " ms" << std::endl;
+
+    // plotting - start
+    matplotlibcpp::title("Results");
+    matplotlibcpp::subplot(6, 1, 1);
+    matplotlibcpp::named_plot("Basic signal", audioSource.samples[0]);
     matplotlibcpp::legend();
-    matplotlibcpp::subplot(2, 1, 2);
-    matplotlibcpp::named_plot("After", freqDomainResult);
+    matplotlibcpp::subplot(6, 1, 2);
+    matplotlibcpp::named_plot(
+      "Coefficients before application of window function", coefficientsBeforeWindowing);
+    matplotlibcpp::legend();
+    matplotlibcpp::subplot(6, 1, 3);
+    matplotlibcpp::named_plot(
+      "Coefficients after application of window function", coefficientsAfterWindowing);
+    matplotlibcpp::legend();
+    matplotlibcpp::subplot(6, 1, 4);
+    matplotlibcpp::named_plot("Coefficients after adding zeroes", coefficientsWithAddedZeros);
+    matplotlibcpp::legend();
+    matplotlibcpp::subplot(6, 1, 5);
+    matplotlibcpp::named_plot("Time domain low pass filter", timeDomainResult);
+    matplotlibcpp::legend();
+    matplotlibcpp::subplot(6, 1, 6);
+    matplotlibcpp::named_plot("Frequency domain low pass filter", freqDomainResult);
     matplotlibcpp::legend();
     matplotlibcpp::show();
+    // plotting - end
 
-    std::cout << "DUPA6" << std::endl;
-
-    // std::vector<double> plotData;
-    // matplotlibcpp::named_plot("Data", batchesWithHops[0]);
-    // matplotlibcpp::show();
-
-    // do {
-    //   std::cout
-    //       << "\nSelect window size:\n'1' = 1024\n'2' = 2048\n'3' = 4096\n";
-    //   std::cin >> windowSizeChoice;
-    // } while (std::find(kPossibleChoices.begin(), kPossibleChoices.end(),
-    //                    windowSizeChoice) == kPossibleChoices.end());
-
-    // do {
-    //   std::cout << "\nSelect window type:\n'1': Rectangle\n'2': Hamming\n'3':
-    //   "
-    //                "Hanning\n";
-    //   std::cin >> windowFunctionTypeChoice;
-    // } while (std::find(kPossibleChoices.begin(), kPossibleChoices.end(),
-    //                    windowFunctionTypeChoice) == kPossibleChoices.end());
-
-    // switch (windowSizeChoice) {
-    // case '1': {
-    //   windowSize = 1024;
-    //   break;
-    // }
-    // case '2': {
-    //   windowSize = 2048;
-    //   break;
-    // }
-    // case '3': {
-    //   windowSize = 4096;
-    //   break;
-    // }
-    // }
-
-    // switch (windowFunctionTypeChoice) {
-    // case '1': {
-    //   windowFunctionType = WindowFunctionType::Rectangle;
-    //   break;
-    // }
-    // case '2': {
-    //   windowFunctionType = WindowFunctionType::Hamming;
-    //   break;
-    // }
-    // case '3': {
-    //   windowFunctionType = WindowFunctionType::Hanning;
-    //   break;
-    // }
-    // }
-
-    // std::cout << "Insert hop size:\n" << std::endl;
-    // std::cin >> hopSize;
-
-    // std::cout << "Loaded window size: " << windowSize << std::endl;
-    // auto plotData =
-    //     Utility::GetSegmentedSamples(audioSource.samples[0], windowSize);
-    // std::vector<std::vector<double>> batches = plotData.segmentedPlotData;
-    // std::vector<int> mask = plotData.mask;
-
-    // std::vector<double> pitchesAutoCorrelation;
-
-    // for (const auto &batch : batches) {
-
-    //   std::vector<double> transformedSignal;
-
-    //   for (int m = 1; m < batch.size(); ++m) {
-    //     double sum = 0;
-    //     for (int i = 0; i < batch.size(); ++i) {
-    //       double value = batch[i];
-
-    //       value *= m + i < batch.size() ? batch[m + i] : 0;
-    //       sum += value;
-    //     }
-    //     transformedSignal.push_back(sum);
-    //   }
-
-    //   // Utility::ShowPlot(batch, "Discrete time signal");
-    //   // Utility::ShowPlot(transformedSignal, "Autocorelation of discrete
-    //   // signal");
-
-    //   int maxIndexAutocorr = Utility::FindIndexOfMaximum(transformedSignal);
-    //   double baseFrequency =
-    //       maxIndexAutocorr == -1
-    //           ? 0
-    //           : static_cast<double>(audioSource.getSampleRate()) /
-    //                 (maxIndexAutocorr + 1);
-
-    //   // std::endl; ShowPlot(batch, "base"); ShowPlot(transformedSignal,
-    //   // "auto");
-
-    //   pitchesAutoCorrelation.push_back(baseFrequency);
-    // }
-
-    // std::vector<double> pitchDataAutocorrelation =
-    // Utility::GetBaseFreqPlotData(
-    //     audioSource, pitchesAutoCorrelation, windowSize);
-
-    // std::vector<double> pitchesCepstrum;
-
-    // for (auto batch : batches) {
-
-    //   CArray freqDomainData(windowSize);
-
-    //   // Utility::ShowPlot(batch, "Basic signal before windowing");
-    //   // okienkowanie przez funkcje Hamminga
-
-    //   Utility::ApplyWindowFunction(batch, windowFunctionType);
-
-    //   // Utility::ShowPlot(batch, "Basic signal windowed by Hamming
-    //   function");
-
-    //   for (int i = 0; i < batch.size(); ++i) {
-    //     freqDomainData[i] = batch[i];
-    //   }
-
-    //   Utility::FFT(freqDomainData);
-    //   CArray halfOfFreqData(windowSize / 2);
-
-    //   for (int i = 0; i < windowSize / 2; ++i) {
-    //     halfOfFreqData[i] = freqDomainData[i];
-    //   }
-
-    //   CArray firstSpectrum(windowSize / 2);
-    //   std::vector<double> firstSpectrumVec(windowSize / 2);
-
-    //   for (int i = 0; i < windowSize / 2; ++i) {
-    //     double val = log(sqrt(pow(halfOfFreqData[i].real(), 2) +
-    //                           pow(halfOfFreqData[i].imag(), 2)) +
-    //                      M_E);
-    //     firstSpectrum[i] = val;
-    //     firstSpectrumVec[i] = val;
-    //   }
-
-    //   // ShowPlot(firstSpectrumVec, "Freq domain - log(mag) signal");
-    //   Utility::FFT(firstSpectrum);
-
-    //   CArray halfOfFirstSpectrum(windowSize / 4);
-    //   for (int i = 0; i < windowSize / 4; ++i) {
-    //     halfOfFirstSpectrum[i] = firstSpectrum[i];
-    //   }
-
-    //   std::vector<double> secondSpectrum(windowSize / 4);
-    //   for (int i = 0; i < windowSize / 4; ++i) {
-    //     double val = val = sqrt(pow(halfOfFirstSpectrum[i].real(), 2) +
-    //                             pow(halfOfFirstSpectrum[i].imag(), 2));
-
-    //     secondSpectrum[i] = val;
-    //   }
-
-    //   int maxIndexCep = Utility::FindIndexOfMaximum(secondSpectrum);
-
-    //   double baseFrequencyCep =
-    //       maxIndexCep == -1 ? 0
-    //                         :
-    //                         static_cast<double>(audioSource.getSampleRate())
-    //                         /
-    //                               (maxIndexCep * 2);
-
-    //   pitchesCepstrum.push_back(baseFrequencyCep);
-    // }
-
-    // std::vector<double> pitchDataCepstrum =
-    //     Utility::GetBaseFreqPlotData(audioSource, pitchesCepstrum,
-    //     windowSize);
-
-    // assert(audioSource.samples[0].size() == pitchDataAutocorrelation.size());
-    // assert(audioSource.samples[0].size() == pitchDataCepstrum.size());
-
-    // for (int i = 0; i < audioSource.samples[0].size(); ++i) {
-    //   pitchDataAutocorrelation[i] *= mask[i];
-    //   pitchDataCepstrum[i] *= mask[i];
-    // }
-
-    // // Utility::ShowPlot(audioSource.samples[0], "Discrete time domain
-    // signal");
-
-    // matplotlibcpp::subplot(2, 1, 1);
-    // matplotlibcpp::title("Discrete time domain signal");
-    // matplotlibcpp::named_plot("Signal", audioSource.samples[0]);
-    // matplotlibcpp::legend();
-    // matplotlibcpp::subplot(2, 1, 2);
-    // matplotlibcpp::named_plot("Pitch detected by autocorrelation",
-    //                           pitchDataAutocorrelation);
-    // matplotlibcpp::named_plot("Pitch detected by cepstrum",
-    // pitchDataCepstrum); matplotlibcpp::title("Pitch detection comparision");
-    // matplotlibcpp::legend();
-    // matplotlibcpp::show();
-
-    // auto autocorrPitchData =
-    //     Utility::GeneratePitchSignal(audioSource, pitchDataAutocorrelation);
-    // auto cepstrumPitchData =
-    //     Utility::GeneratePitchSignal(audioSource, pitchDataCepstrum);
-
-    // matplotlibcpp::subplot(3, 1, 1);
-    // matplotlibcpp::title("Discrete time domain signal");
-    // matplotlibcpp::named_plot("Signal", audioSource.samples[0]);
-    // matplotlibcpp::legend();
-
-    // matplotlibcpp::subplot(3, 1, 2);
-    // matplotlibcpp::title("Sine wave generated from autocorrelation pitch");
-    // matplotlibcpp::named_plot("Signal", autocorrPitchData);
-    // matplotlibcpp::legend();
-
-    // matplotlibcpp::subplot(3, 1, 3);
-    // matplotlibcpp::title("Sine wave generated from cepstrum pitch");
-    // matplotlibcpp::named_plot("Signal", cepstrumPitchData);
-    // matplotlibcpp::legend();
-
-    // matplotlibcpp::show();
-
-    // AudioFile<double>::AudioBuffer bufferAuto;
-    // AudioFile<double>::AudioBuffer bufferCep;
-
-    // bufferAuto.resize(1);
-    // bufferCep.resize(1);
-
-    // // 3. Set number of samples per channel
-    // bufferAuto[0].resize(autocorrPitchData.size());
-    // bufferCep[0].resize(cepstrumPitchData.size());
-
-    // bufferAuto[0] = autocorrPitchData;
-    // bufferCep[0] = cepstrumPitchData;
-
-    // AudioFile<double> autoCorrFile;
-    // AudioFile<double> cepstrumFile;
-
-    // autoCorrFile.setAudioBuffer(bufferAuto);
-    // cepstrumFile.setAudioBuffer(bufferCep);
-
-    // autoCorrFile.setBitDepth(24);
-    // cepstrumFile.setBitDepth(24);
-    // autoCorrFile.setSampleRate(44100);
-    // cepstrumFile.setSampleRate(44100);
-
-    // autoCorrFile.save("./autoCorrPitch.wav", AudioFileFormat::Wave);
-    // cepstrumFile.save("./cepstrumPitch.wav", AudioFileFormat::Wave);
     break;
   }
   case 'l':
@@ -532,6 +405,6 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
     break;
   }
   }
-} // namespace POID_DGMK
+}
 
 } // namespace POID_DGMK
