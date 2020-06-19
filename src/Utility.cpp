@@ -112,17 +112,20 @@ void Utility::ApplyWindowFunction(std::vector<double>& aData, WindowFunctionType
   }
   case WindowFunctionType::Hamming:
   {
+    std::vector<double> mockSignal(aData.size(), 1);
+
     for (int i = 0; i < aData.size(); ++i)
     {
       if (i == 0 || i == aData.size() - 1)
       {
         aData[i] *=
-          0.5 * (0.53836 - 0.46164 * cos(2 * M_PI * i / (1.0 * (aData.size() - 1))));
+          0.5 * (0.54 - 0.46 * cos(2.0 * M_PI * i / (1.0 * (aData.size() - 1.0))));
+        aData[i] /= 1.08;
       }
       else
       {
-        aData[i] *=
-          (0.53836 - 0.46164 * cos(2 * M_PI * i / (1.0 * (aData.size() - 1))));
+        aData[i] *= (0.54 - 0.46 * cos(2.0 * M_PI * i / (1.0 * (aData.size() - 1.0))));
+        aData[i] /= 1.08;
       }
     }
 
@@ -132,14 +135,7 @@ void Utility::ApplyWindowFunction(std::vector<double>& aData, WindowFunctionType
   {
     for (int i = 0; i < aData.size(); ++i)
     {
-      if (i == 0 || i == aData.size() - 1)
-      {
-        aData[i] *= 0.5 * 0.5 * (1 - cos((2 * M_PI * i) / (aData.size() - 1)));
-      }
-      else
-      {
-        aData[i] *= 0.5 * (1 - cos((2 * M_PI * i) / (aData.size() - 1)));
-      }
+      aData[i] *= 0.5 * (1 - cos((2 * M_PI * i) / (aData.size() - 1)));
     }
     break;
   }
@@ -180,6 +176,7 @@ std::vector<std::vector<double>> Utility::GetSegmentedSignal(const std::vector<d
         batch.push_back(aSamples[i]);
       }
     }
+
     batches.push_back(batch);
   }
 

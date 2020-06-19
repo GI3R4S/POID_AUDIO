@@ -13,6 +13,57 @@
 #include <valarray>
 #include <vector>
 
+namespace
+{
+std::vector<double> Convolution(const std::vector<double>& A, const std::vector<double>& B)
+{
+  int i1;
+  double tmp;
+  std::vector<double> C(A.size() + B.size() - 1, 0);
+
+  for (int i = 0; i < C.size(); i++)
+  {
+    i1 = i;
+    tmp = 0.0;
+    for (int j = 0; j < B.size(); j++)
+    {
+      if (i1 >= 0 && i1 < A.size())
+        tmp += (A[i1] * B[j]);
+
+      --i1;
+      C[i] = tmp;
+    }
+  }
+
+  return C;
+}
+
+int GetFirstPowerOf2GT(double aValue)
+{
+  for (int i = 0; true; ++i)
+  {
+    int val = pow(2, i);
+    if (val > aValue)
+    {
+      return val;
+    }
+  }
+  return -1;
+}
+
+void Normalize(std::vector<double>& aData)
+{
+  double min = *std::min_element(aData.begin(), aData.end());
+  double max = *std::max_element(aData.begin(), aData.end());
+
+  for (auto& val : aData)
+  {
+    val = (val - min) / (max - min);
+  }
+}
+
+} // namespace
+
 namespace POID_DGMK
 {
 
@@ -92,8 +143,10 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
                  "between 1 - 1000: \n";
     std::cin >> cutoff_freq;
 
-    std::cout << "Insert value of N - should be greater than window size - 0 "
-                 "for default value: \n";
+    std::cout << "Insert value of N - 0 for default value is first 2^n GT "
+                 "M(WINDOW SIZE) + L(NUMBER OF COEFFICIENTS) - 1 = "
+              << GetFirstPowerOf2GT(windowSize + filterLength - 1) << std::endl;
+
     std::cin >> nValue;
 
     std::cout
@@ -102,26 +155,77 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
 
     // input of params - end
 
+    std::vector<double> signal;
+
+    for (int i = 0; i < 44100; ++i)
+    {
+      signal.push_back(1);
+    }
+
     // segmentation of signal - common for both variants
     auto segments =
       Utility::GetSegmentedSignal(audioSource.samples[0], windowSize, hopSize);
 
+    auto testSegments = Utility::GetSegmentedSignal(signal, windowSize, hopSize);
+    std::vector<double> testResult(signal.size(), 0);
+
+    for (auto& segment : segments)
+    {
+      Utility::ApplyWindowFunction(segment, windowFunctionType);
+    }
+
+    for (auto& segment : testSegments)
+    {
+      Utility::ApplyWindowFunction(segment, windowFunctionType);
+    }
+
+    matplotlibcpp::named_plot("First window", testSegments[0]);
+    matplotlibcpp::legend();
+    matplotlibcpp::show();
+
+    for (int i = 0; i < testSegments.size(); ++i)
+    {
+      if (i == 0)
+      {
+        for (int j = 0; j < testSegments[i].size(); ++j)
+        {
+          testResult[j] += testSegments[i][j];
+        }
+      }
+      else
+      {
+        for (int j = 0; j < testSegments[i].size(); ++j)
+        {
+          if (i * hopSize + j >= audioSource.samples[0].size())
+          {
+            break;
+          }
+          testResult[i * hopSize + j] += testSegments[i][j];
+        }
+      }
+    }
+
+    matplotlibcpp::named_plot("Test result", testResult);
+    matplotlibcpp::legend();
+    matplotlibcpp::show();
+
     // computation of coefficients - start
     std::vector<double> coefficients;
+    int half = (filterLength - 1) / 2.0;
     for (int i = 0; i < filterLength; ++i)
     {
-      if (i == (filterLength - 1) / 2)
+      if (i == half)
       {
         coefficients.push_back(2.0 * cutoff_freq / 44100.0);
       }
       else
       {
-        double value =
-          sin((2 * M_PI * cutoff_freq / (44100.0)) * (i - ((filterLength - 1) / 2.0))) /
-          (M_PI * (i - ((filterLength - 1) / 2)));
+        double value = sin(2.0 * M_PI * cutoff_freq / 44100.0 * (i - half)) /
+                       (M_PI * (i - half));
         coefficients.push_back(value);
       }
     }
+
     // computation of coefficients - end
 
     // applying window function on coefficients
@@ -137,46 +241,16 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
     auto timeDomainStart = std::chrono::steady_clock::now();
     auto segmentsCopy = segments;
 
-    // Adding zeroes at head and tail of segments to meet formula requirements - start
-    for (int i = 0; i < segmentedSignalTimeDomain.size(); ++i)
-    {
-      std::vector<double> tmp;
-
-      for (int j = 0; j < filterLength - 1; ++j)
-      {
-        tmp.push_back(0);
-      }
-
-      auto tmp2 = segmentedSignalTimeDomain[i];
-
-      tmp.insert(tmp.end(), tmp2.begin(), tmp2.end());
-
-      for (int j = 0; j < filterLength - 1; ++j)
-      {
-        tmp.push_back(0);
-      }
-      segmentedSignalTimeDomain[i] = tmp;
-    }
-    // Adding zeroes at head and tail of segments to meet formula requirements - end
-
-    // Applying filter made of coefficients to windowed signal - start
+    // Convolution of batches and coefficients - start
     std::vector<std::vector<double>> timeDomainOutput;
 
     for (int i = 0; i < segmentedSignalTimeDomain.size(); ++i)
     {
-      timeDomainOutput.push_back(std::vector<double>());
-
-      for (int j = filterLength; j < segmentedSignalTimeDomain[i].size() - filterLength; ++j)
-      {
-        double sum = 0;
-        for (int k = 0; k < filterLength; ++k)
-        {
-          sum += segmentedSignalTimeDomain[i][j - k] * coefficients[k];
-        }
-        timeDomainOutput[i].push_back(sum);
-      }
+      auto convolution =
+        Convolution(segmentedSignalTimeDomain[i], coefficientsAfterWindowing);
+      timeDomainOutput.push_back(std::move(convolution));
     }
-    // Applying filter made of coefficients to windowed signal - end
+    // Convolution of batches and coefficients - end
 
     // Merging modified segments, addition of values on connetction - start
     std::vector<double> timeDomainResult(audioSource.samples[0].size(), 0);
@@ -202,6 +276,9 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
         }
       }
     }
+
+    Normalize(timeDomainResult);
+
     // Merging modified segments, addition of values on connetction - end
 
     auto timeDomainEnd = std::chrono::steady_clock::now();
@@ -213,7 +290,8 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
     auto freqDomainStart = std::chrono::steady_clock::now();
     auto coefficientsWithAddedZeros = coefficientsAfterWindowing;
 
-    int desiredSize = nValue == 0 ? filterLength + windowSize - 1 : nValue;
+    int desiredSize =
+      nValue == 0 ? GetFirstPowerOf2GT(windowSize + filterLength - 1) : nValue;
 
     // Adding zeroes to coefficients - start
     if (isCasuative)
@@ -225,9 +303,11 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
     }
     else
     {
+      // auto coefficientsCpy = coefficients;
+      // Adding zeroes to coefficients - start
       std::vector<double> firstHalf;
       std::vector<double> secondHalf;
-      std::vector<double> zeroes;
+      std::vector<double> zeroes(desiredSize - coefficients.size(), 0);
 
       for (int i = 0; i < coefficientsWithAddedZeros.size(); ++i)
       {
@@ -241,10 +321,6 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
         }
       }
 
-      for (int i = 0; i < desiredSize - firstHalf.size() - secondHalf.size(); ++i)
-      {
-        zeroes.push_back(0);
-      }
       coefficientsWithAddedZeros.clear();
       coefficientsWithAddedZeros.insert(coefficientsWithAddedZeros.end(),
                                         firstHalf.begin(), firstHalf.end());
@@ -253,8 +329,6 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
       coefficientsWithAddedZeros.insert(coefficientsWithAddedZeros.end(),
                                         secondHalf.begin(), secondHalf.end());
     }
-
-    // Adding zeroes to coefficients - end
 
     // Adding zeroes to segments - start
     for (auto& batch : segmentedSignalFreqDomain)
@@ -265,8 +339,8 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
       }
       assert(coefficientsWithAddedZeros.size() == batch.size());
     }
-    // Adding zeroes to segments - end
 
+    // Adding zeroes to segments - end
     // Performing FFT transforms, multiplication of batches and coefficiennts- start
     CArray coefficientsFFT(coefficientsWithAddedZeros.size());
     std::vector<CArray> segmentsFFT(segmentedSignalFreqDomain.size(),
@@ -319,6 +393,8 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
         }
       }
     }
+
+    Normalize(freqDomainResult);
     // Retrieving result - merging segments - end
 
     auto freqDomainEnd = std::chrono::steady_clock::now();
