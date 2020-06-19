@@ -1,68 +1,16 @@
 #include "UserChoiceHandler.h"
+#include "WindowApplicator.h"
 #include "matplotlibcpp.h"
-#include <algorithm>
-#include <fstream>
-#include <map>
-#include <numeric>
-#include <stdio.h>
-
 #include <algorithm>
 #include <assert.h>
 #include <chrono>
 #include <complex>
+#include <fstream>
+#include <map>
+#include <numeric>
+#include <stdio.h>
 #include <valarray>
 #include <vector>
-
-namespace
-{
-std::vector<double> Convolution(const std::vector<double>& A, const std::vector<double>& B)
-{
-  int i1;
-  double tmp;
-  std::vector<double> C(A.size() + B.size() - 1, 0);
-
-  for (int i = 0; i < C.size(); i++)
-  {
-    i1 = i;
-    tmp = 0.0;
-    for (int j = 0; j < B.size(); j++)
-    {
-      if (i1 >= 0 && i1 < A.size())
-        tmp += (A[i1] * B[j]);
-
-      --i1;
-      C[i] = tmp;
-    }
-  }
-
-  return C;
-}
-
-int GetFirstPowerOf2GT(double aValue)
-{
-  for (int i = 0; true; ++i)
-  {
-    int val = pow(2, i);
-    if (val > aValue)
-    {
-      return val;
-    }
-  }
-  return -1;
-}
-
-void Normalize(std::vector<double>& aData)
-{
-  double min = *std::min_element(aData.begin(), aData.end());
-  double max = *std::max_element(aData.begin(), aData.end());
-
-  for (auto& val : aData)
-  {
-    val = (val - min) / (max - min);
-  }
-}
-
-} // namespace
 
 namespace POID_DGMK
 {
@@ -109,7 +57,7 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
     do
     {
       std::cout << "\nSelect window type:\n'1': Rectangle\n'2': Hamming\n'3': "
-                   "Hanning\n";
+                   "Hann\n";
       std::cin >> windowFunctionTypeChoice;
     } while (std::find(kPossibleChoices.begin(), kPossibleChoices.end(),
                        windowFunctionTypeChoice) == kPossibleChoices.end());
@@ -128,7 +76,7 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
     }
     case '3':
     {
-      windowFunctionType = WindowFunctionType::Hanning;
+      windowFunctionType = WindowFunctionType::Hann;
       break;
     }
     }
@@ -145,7 +93,8 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
 
     std::cout << "Insert value of N - 0 for default value is first 2^n GT "
                  "M(WINDOW SIZE) + L(NUMBER OF COEFFICIENTS) - 1 = "
-              << GetFirstPowerOf2GT(windowSize + filterLength - 1) << std::endl;
+              << Utility::GetFirstPowerOf2GT(windowSize + filterLength - 1)
+              << std::endl;
 
     std::cin >> nValue;
 
@@ -153,61 +102,23 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
       << "Is window casuative ? Type 0 if no, any other number otherwise: \n";
     std::cin >> isCasuative;
 
+    const double kSignalMin = *std::min_element(audioSource.samples[0].begin(),
+                                                audioSource.samples[0].end());
+    const double kSignalMax = *std::max_element(audioSource.samples[0].begin(),
+                                                audioSource.samples[0].end());
     // input of params - end
 
-    std::vector<double> signal;
-
-    for (int i = 0; i < 44100; ++i)
-    {
-      signal.push_back(1);
-    }
-
     // segmentation of signal - common for both variants
+
     auto segments =
       Utility::GetSegmentedSignal(audioSource.samples[0], windowSize, hopSize);
 
-    auto testSegments = Utility::GetSegmentedSignal(signal, windowSize, hopSize);
-    std::vector<double> testResult(signal.size(), 0);
+    WindowApplicator windowApplicator(windowSize, hopSize, windowFunctionType);
 
-    for (auto& segment : segments)
+    for (int i = 0; i < segments.size(); ++i)
     {
-      Utility::ApplyWindowFunction(segment, windowFunctionType);
+      windowApplicator.ApplyWindowFunction(segments[i]);
     }
-
-    for (auto& segment : testSegments)
-    {
-      Utility::ApplyWindowFunction(segment, windowFunctionType);
-    }
-
-    matplotlibcpp::named_plot("First window", testSegments[0]);
-    matplotlibcpp::legend();
-    matplotlibcpp::show();
-
-    for (int i = 0; i < testSegments.size(); ++i)
-    {
-      if (i == 0)
-      {
-        for (int j = 0; j < testSegments[i].size(); ++j)
-        {
-          testResult[j] += testSegments[i][j];
-        }
-      }
-      else
-      {
-        for (int j = 0; j < testSegments[i].size(); ++j)
-        {
-          if (i * hopSize + j >= audioSource.samples[0].size())
-          {
-            break;
-          }
-          testResult[i * hopSize + j] += testSegments[i][j];
-        }
-      }
-    }
-
-    matplotlibcpp::named_plot("Test result", testResult);
-    matplotlibcpp::legend();
-    matplotlibcpp::show();
 
     // computation of coefficients - start
     std::vector<double> coefficients;
@@ -230,7 +141,7 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
 
     // applying window function on coefficients
     auto coefficientsBeforeWindowing = coefficients;
-    Utility::ApplyWindowFunction(coefficients, windowFunctionType);
+    WindowApplicator::ApplyWindowFunction(coefficients, windowFunctionType);
     auto coefficientsAfterWindowing = coefficients;
 
     auto segmentedSignalTimeDomain = segments;
@@ -247,37 +158,16 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
     for (int i = 0; i < segmentedSignalTimeDomain.size(); ++i)
     {
       auto convolution =
-        Convolution(segmentedSignalTimeDomain[i], coefficientsAfterWindowing);
+        Utility::Convolution(segmentedSignalTimeDomain[i], coefficientsAfterWindowing);
       timeDomainOutput.push_back(std::move(convolution));
     }
     // Convolution of batches and coefficients - end
 
     // Merging modified segments, addition of values on connetction - start
-    std::vector<double> timeDomainResult(audioSource.samples[0].size(), 0);
+    std::vector<double> timeDomainResult = windowApplicator.MergeDoubleSegments(
+      timeDomainOutput, audioSource.samples[0].size());
 
-    for (int i = 0; i < timeDomainOutput.size(); ++i)
-    {
-      if (i == 0)
-      {
-        for (int j = 0; j < timeDomainOutput[i].size(); ++j)
-        {
-          timeDomainResult[j] += timeDomainOutput[i][j];
-        }
-      }
-      else
-      {
-        for (int j = 0; j < timeDomainOutput[i].size(); ++j)
-        {
-          if (i * hopSize + j >= audioSource.samples[0].size())
-          {
-            break;
-          }
-          timeDomainResult[i * hopSize + j] += timeDomainOutput[i][j];
-        }
-      }
-    }
-
-    Normalize(timeDomainResult);
+    // Utility::Normalize(timeDomainResult, kSignalMin, kSignalMax);
 
     // Merging modified segments, addition of values on connetction - end
 
@@ -291,7 +181,7 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
     auto coefficientsWithAddedZeros = coefficientsAfterWindowing;
 
     int desiredSize =
-      nValue == 0 ? GetFirstPowerOf2GT(windowSize + filterLength - 1) : nValue;
+      nValue == 0 ? Utility::GetFirstPowerOf2GT(windowSize + filterLength - 1) : nValue;
 
     // Adding zeroes to coefficients - start
     if (isCasuative)
@@ -371,30 +261,10 @@ void UserChoiceHandler::HandleUserChoice(std::string& aInputFile, AudioFile<doub
     // Performing IFFT transform to get result - end
 
     // Retrieving result - merging segments - start
-    std::vector<double> freqDomainResult(audioSource.samples[0].size());
-    for (int i = 0; i < segmentsFFT.size(); ++i)
-    {
-      if (i == 0)
-      {
-        for (int j = 0; j < segmentsFFT[i].size(); ++j)
-        {
-          freqDomainResult[j] += segmentsFFT[i][j].real();
-        }
-      }
-      else
-      {
-        for (int j = 0; j < segmentsFFT[i].size(); ++j)
-        {
-          if (i * hopSize + j >= audioSource.samples[0].size())
-          {
-            break;
-          }
-          freqDomainResult[i * hopSize + j] += segmentsFFT[i][j].real();
-        }
-      }
-    }
+    std::vector<double> freqDomainResult = windowApplicator.MergeComplexSegments(
+      segmentsFFT, audioSource.samples[0].size());
 
-    Normalize(freqDomainResult);
+    // Utility::Normalize(freqDomainResult, kSignalMin, kSignalMax);
     // Retrieving result - merging segments - end
 
     auto freqDomainEnd = std::chrono::steady_clock::now();

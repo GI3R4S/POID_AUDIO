@@ -9,14 +9,6 @@
 
 namespace POID_DGMK
 {
-
-enum class WindowFunctionType
-{
-  Rectangle,
-  Hamming,
-  Hanning
-};
-
 class Utility
 {
 public:
@@ -30,15 +22,18 @@ public:
 
   static void SaveSignalToFile(const std::string aFileName, const std::vector<double>& aData);
 
-  static void ApplyWindowFunction(std::vector<double>& aData,
-                                  WindowFunctionType aWindowFunctionType);
-
   using TComplex = std::complex<double>;
   using CArray = std::valarray<TComplex>;
   using TComplexRepresentation = std::vector<CArray>;
 
   static void FFT(CArray& x);
   static void IFFT(CArray& x);
+
+  static std::vector<double> Convolution(const std::vector<double>& aFirstVector,
+                                         const std::vector<double>& aSecondVector);
+
+  static int GetFirstPowerOf2GT(double aValue);
+  static void Normalize(std::vector<double>& aData, double aNewMin, double aNewMax);
 };
 
 } // namespace POID_DGMK

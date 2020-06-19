@@ -102,46 +102,6 @@ void Utility::SaveSignalToFile(std::string aFileName, const std::vector<double>&
   bufferFile.save("./" + aFileName + ".wav", AudioFileFormat::Wave);
 }
 
-void Utility::ApplyWindowFunction(std::vector<double>& aData, WindowFunctionType aWindowFunctionType)
-{
-  switch (aWindowFunctionType)
-  {
-  case WindowFunctionType::Rectangle:
-  {
-    break;
-  }
-  case WindowFunctionType::Hamming:
-  {
-    std::vector<double> mockSignal(aData.size(), 1);
-
-    for (int i = 0; i < aData.size(); ++i)
-    {
-      if (i == 0 || i == aData.size() - 1)
-      {
-        aData[i] *=
-          0.5 * (0.54 - 0.46 * cos(2.0 * M_PI * i / (1.0 * (aData.size() - 1.0))));
-        aData[i] /= 1.08;
-      }
-      else
-      {
-        aData[i] *= (0.54 - 0.46 * cos(2.0 * M_PI * i / (1.0 * (aData.size() - 1.0))));
-        aData[i] /= 1.08;
-      }
-    }
-
-    break;
-  }
-  case WindowFunctionType::Hanning:
-  {
-    for (int i = 0; i < aData.size(); ++i)
-    {
-      aData[i] *= 0.5 * (1 - cos((2 * M_PI * i) / (aData.size() - 1)));
-    }
-    break;
-  }
-  }
-}
-
 std::vector<std::vector<double>> Utility::GetSegmentedSignal(const std::vector<double>& aSamples,
                                                              int aWindowSize,
                                                              int aHopSize)
@@ -181,6 +141,54 @@ std::vector<std::vector<double>> Utility::GetSegmentedSignal(const std::vector<d
   }
 
   return batches;
+}
+
+std::vector<double> Utility::Convolution(const std::vector<double>& aFirstVector,
+                                         const std::vector<double>& aSecondVector)
+{
+  int i1;
+  double tmp;
+  std::vector<double> convolutionResult(aFirstVector.size() + aSecondVector.size() - 1, 0);
+
+  for (int i = 0; i < convolutionResult.size(); i++)
+  {
+    i1 = i;
+    tmp = 0.0;
+    for (int j = 0; j < aSecondVector.size(); j++)
+    {
+      if (i1 >= 0 && i1 < aFirstVector.size())
+        tmp += (aFirstVector[i1] * aSecondVector[j]);
+
+      --i1;
+      convolutionResult[i] = tmp;
+    }
+  }
+
+  return convolutionResult;
+}
+
+int Utility::GetFirstPowerOf2GT(double aValue)
+{
+  for (int i = 0; true; ++i)
+  {
+    int val = pow(2, i);
+    if (val > aValue)
+    {
+      return val;
+    }
+  }
+  return -1;
+}
+
+void Utility::Normalize(std::vector<double>& aData, double aNewMin, double aNewMax)
+{
+  double min = *std::min_element(aData.begin(), aData.end());
+  double max = *std::max_element(aData.begin(), aData.end());
+
+  for (auto& val : aData)
+  {
+    val = (val - min) / (max - min) * (aNewMax - aNewMin) + aNewMin;
+  }
 }
 
 } // namespace POID_DGMK
